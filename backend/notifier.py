@@ -7,6 +7,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 from urllib.parse import parse_qs, urlparse
 
 import httpx
@@ -60,7 +61,7 @@ def _send_email(alert_info: dict) -> None:
         db.close()
 
 
-async def _upload_dingtalk_media(client: httpx.AsyncClient, webhook_url: str, file_path: str) -> str | None:
+async def _upload_dingtalk_media(client: httpx.AsyncClient, webhook_url: str, file_path: str) -> Optional[str]:
     """Upload an image to DingTalk robot media API, return media_id or None."""
     try:
         parsed = urlparse(webhook_url)
