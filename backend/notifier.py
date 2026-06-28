@@ -103,7 +103,7 @@ async def _send_dingtalk(alert_info: dict) -> None:
                 "text": text,
             },
         }
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
             resp = await client.post(cfg.dingtalk_webhook, json=payload)
             if resp.status_code == 200:
                 logger.info("DingTalk sent OK")
