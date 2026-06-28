@@ -1,0 +1,55 @@
+###############################################
+# MediaMTX - embedded streaming core for e-fence monitor
+###############################################
+
+logLevel: warn
+logDestinations: [stdout]
+readTimeout: 10s
+writeTimeout: 10s
+writeQueueSize: 512
+
+# ---- Authentication: open for local dev ----
+authMethod: internal
+authInternalUsers:
+- user: any
+  pass:
+  ips: []
+  permissions:
+  - action: publish
+  - action: read
+  - action: playback
+  - action: api
+  - action: metrics
+
+# ---- Protocols ----
+rtsp: yes
+rtspAddress: :8554
+rtpAddress: :8100
+rtcpAddress: :8101
+
+rtmp: no
+
+hls: yes
+hlsAddress: :8888
+hlsAllowOrigin: '*'
+hlsAlwaysRemux: yes
+hlsSegmentDuration: 1s
+hlsPartDuration: 200ms
+hlsSegmentCount: 7
+hlsVariant: lowLatency
+hlsDirectory: hls
+hlsMuxerCloseAfter: 0s
+
+webrtc: no
+
+srt: no
+
+# ---- API ----
+api: yes
+apiAddress: :9997
+
+# ---- Paths ----
+paths:
+  monitor:
+    source: publisher
+    sourceOnDemand: no

@@ -1,0 +1,86 @@
+"""SQLite database models"""
+import datetime
+import json
+
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+from config import DB_PATH
+
+Base = declarative_base()
+
+
+class Alert(Base):
+    __tablename__ = "alerts"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    class_name = Column(String(32), nullable=False)
+    confidence = Column(Float)
+    bbox = Column(Text)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    video_source = Column(String(256))
+    snapshot_path = Column(String(512))
+    clip_path = Column(String(512), nullable=True)
+    handled = Column(Boolean, default=False)
+    status = Column(String(16), default="pending")     # pending/processing/dismissed/resolved
+    handler = Column(String(64), nullable=True)
+    opinion = Column(Text, nullable=True)
+    handled_at = Column(DateTime, nullable=True)
+
+
+class Fence(Base):
+    __tablename__ = "fence"
+    id = Column(Integer, primary_key=True)
+    source_id = Column(String(32), default="default")   # per-source fence support
+    points = Column(Text, nullable=False)
+    world_points = Column(Text, default="[]")
+    mode = Column(String(16), default="restricted")
+    enabled = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class Calibration(Base):
+    __tablename__ = "calibration"
+    id = Column(Integer, primary_key=True)
+    source_id = Column(String(32), default="default")
+    pixel_points = Column(Text)
+    world_points = Column(Text)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+class Config(Base):
+    __tablename__ = "config"
+    id = Column(Integer, primary_key=True)
+    email_enabled = Column(Boolean, default=False)
+    email_smtp_server = Column(String(128))
+    email_smtp_port = Column(Integer, default=465)
+    email_user = Column(String(128))
+    email_password = Column(String(128))
+    email_to = Column(String(256))
+    dingtalk_enabled = Column(Boolean, default=False)
+    dingtalk_webhook = Column(String(512))
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+
+engine = create_engine(f"sqlite:///{DB_PATH}", echo=False, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(bind=engine)
+
+
+def init_db():
+    Base.metadata.create_all(engine)
+    with SessionLocal() as session:
+        if not session.query(Fence).filter(Fence.source_id == "default").first():
+            session.add(Fence(id=1, source_id="default", points=json.dumps([]), world_points=json.dumps([])))
+        if not session.query(Config).first():
+            session.add(Config(id=1))
+        if not session.query(Calibration).filter(Calibration.source_id == "default").first():
+            session.add(Calibration(id=1, source_id="default", pixel_points=json.dumps([]), world_points=json.dumps([])))
+        session.commit()
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

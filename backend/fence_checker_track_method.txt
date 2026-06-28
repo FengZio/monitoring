@@ -1,0 +1,55 @@
+    def track_fence(self, frame: np.ndarray) -> Optional[list[list[float]]]:
+        """
+        Match ORB features between reference and current frame.
+        Compute homography and project fence to current frame.
+        Returns new pixel coordinates for fence, or current fence if tracking fails.
+        """
+        if not self._auto_tracking or self._ref_gray is None:
+            return None
+        if self._ref_kp is None or self._ref_des is None:
+            return None
+        if not self._fence_pixels:
+            return None
+
+        self._track_skip += 1
+        if self._track_skip % ORB_TRACK_INTERVAL != 0:
+            return self.get_fence_pixels()
+
+        try:
+            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            kp, des = self._orb.detectAndCompute(gray, None)
+            if des is None or len(kp) < 10:
+                return self.get_fence_pixels()
+
+            matches = self._bf.match(self._ref_des, des)
+            if len(matches) < 15:
+                return self.get_fence_pixels()
+
+            matches = sorted(matches, key=lambda x: x.distance)
+
+            src_pts = np.float32(
+                [self._ref_kp[m.queryIdx].pt for m in matches]
+            ).reshape(-1, 1, 2)
+            dst_pts = np.float32(
+                [kp[m.trainIdx].pt for m in matches]
+            ).reshape(-1, 1, 2)
+
+            H, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
+            if H is None:
+                return self.get_fence_pixels()
+
+            inliers = int(mask.sum()) if mask is not None else 0
+            if inliers < 8:
+                return self.get_fence_pixels()
+
+            fence_pts = np.float32(self._ref_fence).reshape(-1, 1, 2)
+            new_pts = cv2.perspectiveTransform(fence_pts, H)
+            new_fence = [[float(p[0][0]), float(p[0][1])] for p in new_pts]
+
+            self._fence_pixels = [(p[0], p[1]) for p in new_fence]
+
+            return new_fence
+
+        except Exception as e:
+            logger.debug(f"ORB tracking: {e}")
+            return self.get_fence_pixels()

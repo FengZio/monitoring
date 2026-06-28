@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Model files (large binaries)
+*.pt
+
+# Database
+*.db
+
+# Uploaded media & generated
+backend/uploads/
+hls/
+
+# MediaMTX binary
+backend/bin/mediamtx.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# OS
+Thumbs.db
+.DS_Store
