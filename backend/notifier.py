@@ -61,42 +61,6 @@ def _send_email(alert_info: dict) -> None:
         db.close()
 
 
-async def _upload_dingtalk_media(client: httpx.AsyncClient, webhook_url: str, file_path: str) -> str | None:
-    """Upload an image to DingTalk robot media API, return media_id or None."""
-    try:
-        parsed = urlparse(webhook_url)
-        params = parse_qs(parsed.query)
-        access_token = params.get("access_token", [None])[0]
-        if not access_token:
-            logger.error("DingTalk: cannot extract access_token from webhook URL")
-            return None
-
-        upload_url = "https://oapi.dingtalk.com/robot/messageFile/upload?access_token={}".format(access_token)
-        file_name = Path(file_path).name
-
-        with open(file_path, "rb") as f:
-            files = {"file": (file_name, f, "image/jpeg")}
-            resp = await client.post(upload_url, files=files)
-
-        if resp.status_code == 200:
-            data = resp.json()
-            if data.get("errcode") == 0:
-                media_id = data.get("media_id", "")
-                logger.info("DingTalk media uploaded: {}".format(media_id))
-                return media_id
-            else:
-                logger.error("DingTalk upload error: {}".format(data))
-                return None
-        else:
-            logger.error("DingTalk upload HTTP {}: {}".format(resp.status_code, resp.text))
-            return None
-    except Exception as e:
-        logger.error("DingTalk upload failed: {}".format(e))
-        return None
-
-
-
-
 async def _upload_dingtalk_media(client: httpx.AsyncClient, webhook_url: str, file_path: str) -> Optional[str]:
     """Upload an image to DingTalk robot media API, return media_id or None."""
     try:
