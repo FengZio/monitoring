@@ -19,6 +19,8 @@ class TrackedObject:
     bbox: list[int]
     inside_fence: bool = False
     was_alerted: bool = False
+    alert_count: int = 0
+    first_alert_time: float = 0.0
     last_seen: float = field(default_factory=time.time)
 
 
@@ -178,11 +180,18 @@ class FenceChecker:
                     if trigger:
                         tobj.inside_fence = currently_inside
                         tobj.was_alerted = True
+                        tobj.alert_count += 1
+                        if tobj.first_alert_time == 0.0:
+                            tobj.first_alert_time = now
+                        repeat_interval = now - tobj.first_alert_time if tobj.alert_count > 1 else 0
                         alerts.append({
                             "track_id": bt_track_id,
                             "class_name": tobj.class_name,
                             "confidence": det["confidence"],
                             "bbox": det["bbox"],
+                            "alert_count": tobj.alert_count,
+                            "is_repeat": tobj.alert_count > 1,
+                            "repeat_interval": round(repeat_interval, 1),
                         })
                     elif not currently_inside:
                         tobj.inside_fence = False
