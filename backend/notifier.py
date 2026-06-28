@@ -56,25 +56,48 @@ def _send_email(alert_info: dict) -> None:
     finally:
         db.close()
 
-
 async def _send_dingtalk(alert_info: dict) -> None:
-    """Send DingTalk bot message."""
+    """Send DingTalk bot message with rich tracking info."""
     db = SessionLocal()
     try:
         cfg = db.query(Config).filter(Config.id == 1).first()
         if not cfg or not cfg.dingtalk_enabled or not cfg.dingtalk_webhook:
             return
 
+        class_name = alert_info["class_name"]
+        confidence = alert_info.get("confidence", 0)
+        track_id = alert_info.get("track_id", "?")
+        alert_count = alert_info.get("alert_count", 1)
+        is_repeat = alert_info.get("is_repeat", False)
+        repeat_interval = alert_info.get("repeat_interval", 0)
+        snapshot_path = alert_info.get("snapshot_path", "")
+
+        # Build rich message based on pattern
+        if alert_count >= 5:
+            pattern = f"⚠️ 高频闯入警告 (第{alert_count}次)"
+        elif is_repeat and repeat_interval < 60:
+            pattern = f"🔄 短时多次进入 (第{alert_count}次, 首次{alert_count - 1}次前{repeat_interval:.0f}秒)"
+        elif is_repeat:
+            pattern = f"🔁 重复进入 (第{alert_count}次)"
+        else:
+            pattern = "🆕 首次进入"
+
+        text = (
+            f"## 🚨 电子围栏告警\n"
+            f"- 目标类型: **{class_name}**  (ID: #{track_id})\n"
+            f"- 置信度: {confidence:.1%}\n"
+            f"- 模式: {pattern}\n"
+            f"- 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        )
+        if snapshot_path:
+            snap_name = snapshot_path.replace("\\", "/").split("/")[-1]
+            text += f"- 截图: [查看](http://localhost:8000/snapshots/{snap_name})\n"
+
         payload = {
             "msgtype": "markdown",
             "markdown": {
                 "title": "电子围栏告警",
-                "text": (
-                    f"## 🚨 电子围栏告警\n"
-                    f"- 目标类型: **{alert_info['class_name']}**\n"
-                    f"- 置信度: {alert_info.get('confidence', 0):.1%}\n"
-                    f"- 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-                ),
+                "text": text,
             },
         }
         async with httpx.AsyncClient(timeout=10) as client:
@@ -84,4 +107,5 @@ async def _send_dingtalk(alert_info: dict) -> None:
             else:
                 logger.warning(f"DingTalk failed: {resp.status_code} {resp.text}")
     finally:
+        db.close()
         db.close()

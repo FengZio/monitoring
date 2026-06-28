@@ -147,6 +147,14 @@ def _source_worker(
                         "alert_class": alerts[-1]["class_name"] if alerts else "unknown",
                     })
 
+            # Save snapshot for each alert
+            for alert in alerts:
+                ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+                snap_name = f"alert_{source_id}_{ts}.jpg"
+                snap_path = str(SNAPSHOTS_DIR / snap_name)
+                cv2.imwrite(snap_path, frame_proc, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                alert["snapshot_path"] = snap_path
+
             # Encode JPEG
             jpg_b64 = encode_frame(frame_proc)
 
