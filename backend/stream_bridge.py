@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from queue import Queue, Empty
 from threading import Thread, Event
-from typing import Optional
+from typing import Optional, Set
 from uuid import uuid4
 
 import cv2
@@ -42,7 +42,7 @@ def _source_worker(
     stop_event: Event,
     detector: Detector,
     fence_checker: FenceChecker,
-    alert_classes: set | None = None,
+    alert_classes: Optional[Set] = None,
 ) -> None:
     """Runs in a thread: open source -> detect -> check fence -> encode -> send."""
     try:
@@ -210,7 +210,7 @@ class StreamManager:
             fence_checker = FenceChecker()
 
         # Read alert classes from config
-        alert_classes: set | None = None
+        alert_classes: Optional[Set] = None
         try:
             db = SessionLocal()
             cfg = db.query(Config).filter(Config.id == 1).first()
