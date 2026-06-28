@@ -86,3 +86,6 @@ export function getHeatmap(sourceId = ""): Promise<HeatmapData> {
 export function getConfig(): Promise<ConfigData> { return request("/api/config"); }
 export function saveConfig(data: ConfigData) { return request("/api/config", { method: "POST", body: JSON.stringify(data) }); }
 export function checkHealth() { return request<{ status: string; streaming: boolean }>("/api/health"); }
+export function setFenceMode(mode: string, sourceId = "default") {
+  return request( + '"/api/fence/mode?source_id=&mode="' + @", { method: "POST" });
+}

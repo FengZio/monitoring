@@ -4,7 +4,7 @@ import ReactECharts from "echarts-for-react";
 import type { AlertInfo, WSMessage, VideoSource } from "./types";
 import { useWS } from "./hooks/useWS";
 import {
-  getFence, saveFence, clearFence,
+  getFence, saveFence, clearFence, setFenceMode,
   addWebcamSource, addFileSource, removeSource, listSources,
   uploadVideo, listVideos, previewWebcam, previewFile,
   getAlerts,
@@ -14,6 +14,7 @@ import FenceCanvas from "./components/FenceCanvas";
 import AlertList from "./components/AlertList";
 import AlertHistory from "./components/AlertHistory";
 import ConfigDialog from "./components/ConfigDialog";
+import FenceModeDialog from "./components/FenceModeDialog";
 import type { AlertRecord } from "./types";
 
 const COLORS = ["#00dbe7", "#ff6384", "#ffcd56", "#4bc0c0", "#9966ff", "#ff9f40", "#c9cbcf"];
@@ -91,7 +92,8 @@ const App: React.FC = () => {
 
   // Fence
   const [fencePoints, setFencePoints] = useState<[number, number][]>([]);
-  const [fenceEditing, setFenceEditing] = useState(false);
+  const [fenceMode, setFenceModeState] = useState("restricted");
+  const [modeDialogOpen, setModeDialogOpen] = useState(false);
   const hasFence = fencePoints.length >= 3;
 
   // Alerts
@@ -169,7 +171,7 @@ const App: React.FC = () => {
   // ---- Load fence on source change ----
   useEffect(() => {
     getFence(activeSourceId || "default").then((d) => {
-      setFencePoints(d.points || []);
+      setFencePoints(d.points || []); setFenceModeState(d.mode || "restricted");
     }).catch(() => {});
   }, [activeSourceId]);
 
@@ -452,6 +454,11 @@ const App: React.FC = () => {
                 title="清除围栏">
                 <span className="material-symbols-outlined text-[20px]">delete</span>
               </button>
+              <button onClick={() => setModeDialogOpen(true)} disabled={!hasFence}
+                className="w-10 h-10 flex items-center justify-center bg-surface-container/60 border border-outline-variant/30 rounded-lg hover:bg-secondary/20 transition-colors disabled:opacity-20 disabled:cursor-not-allowed"
+                title="围栏模式">
+                <span className="text-[9px] font-bold">{fenceMode === "restricted" ? "禁入" : "禁出"}</span>
+              </button>
             </div>
 
             {/* Video content */}
@@ -645,6 +652,9 @@ const App: React.FC = () => {
       </div>
 
       {/* Dialogs */}
+      <FenceModeDialog open={modeDialogOpen}
+        onOk={(mode: string) => { setFenceMode(mode, activeSourceId || "default").then(() => setFenceModeState(mode)).catch(() => {}); setModeDialogOpen(false); }}
+        onCancel={() => setModeDialogOpen(false)} />
       <ConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
     </div>
   );
