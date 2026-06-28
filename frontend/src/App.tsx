@@ -92,6 +92,7 @@ const App: React.FC = () => {
 
   // Fence
   const [fencePoints, setFencePoints] = useState<[number, number][]>([]);
+  const [fenceEditing, setFenceEditing] = useState(false);
   const [fenceMode, setFenceModeState] = useState("restricted");
   const [modeDialogOpen, setModeDialogOpen] = useState(false);
   const hasFence = fencePoints.length >= 3;
