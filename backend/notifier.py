@@ -1,4 +1,4 @@
-"""异步通知服务 — 邮件 + 钉钉 Webhook"""
+"""异步通知服务 --- 邮件 + 钉钉 Webhook"""
 import asyncio
 import logging
 import smtplib
@@ -56,6 +56,7 @@ def _send_email(alert_info: dict) -> None:
     finally:
         db.close()
 
+
 async def _send_dingtalk(alert_info: dict) -> None:
     """Send DingTalk bot message with rich tracking info."""
     db = SessionLocal()
@@ -64,7 +65,7 @@ async def _send_dingtalk(alert_info: dict) -> None:
         if not cfg or not cfg.dingtalk_enabled or not cfg.dingtalk_webhook:
             return
 
-        class_name = alert_info["class_name"]
+        class_name = alert_info.get("class_name", "unknown")
         confidence = alert_info.get("confidence", 0)
         track_id = alert_info.get("track_id", "?")
         alert_count = alert_info.get("alert_count", 1)
@@ -74,24 +75,26 @@ async def _send_dingtalk(alert_info: dict) -> None:
 
         # Build rich message based on pattern
         if alert_count >= 5:
-            pattern = f"⚠️ 高频闯入警告 (第{alert_count}次)"
+            pattern = "[高频] 闯入警告 (第{}次)".format(alert_count)
         elif is_repeat and repeat_interval < 60:
-            pattern = f"🔄 短时多次进入 (第{alert_count}次, 首次{alert_count - 1}次前{repeat_interval:.0f}秒)"
+            pattern = "[短时多次] 进入 (第{}次, {:.0f}s内)".format(alert_count, repeat_interval)
         elif is_repeat:
-            pattern = f"🔁 重复进入 (第{alert_count}次)"
+            pattern = "[重复] 进入 (第{}次)".format(alert_count)
         else:
-            pattern = "🆕 首次进入"
+            pattern = "[首次] 进入"
 
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         text = (
-            f"## 🚨 电子围栏告警\n"
-            f"- 目标类型: **{class_name}**  (ID: #{track_id})\n"
-            f"- 置信度: {confidence:.1%}\n"
-            f"- 模式: {pattern}\n"
-            f"- 时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        )
+            "## 电子围栏告警\n"
+            "- 目标类型: **{}**  (ID: #{})\n"
+            "- 置信度: {:.1%}\n"
+            "- 模式: {}\n"
+            "- 时间: {}\n"
+        ).format(class_name, track_id, confidence, pattern, now_str)
+
         if snapshot_path:
             snap_name = snapshot_path.replace("\\", "/").split("/")[-1]
-            text += f"- 截图: [查看](http://localhost:8000/snapshots/{snap_name})\n"
+            text += "- 截图: [查看](http://localhost:8000/snapshots/{})\n".format(snap_name)
 
         payload = {
             "msgtype": "markdown",
@@ -103,9 +106,10 @@ async def _send_dingtalk(alert_info: dict) -> None:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(cfg.dingtalk_webhook, json=payload)
             if resp.status_code == 200:
-                logger.info("DingTalk notification sent")
+                logger.info("DingTalk sent OK")
             else:
-                logger.warning(f"DingTalk failed: {resp.status_code} {resp.text}")
+                logger.error("DingTalk HTTP {}: {}".format(resp.status_code, resp.text))
+    except Exception as e:
+        logger.error("DingTalk failed: {}".format(e), exc_info=True)
     finally:
-        db.close()
         db.close()
