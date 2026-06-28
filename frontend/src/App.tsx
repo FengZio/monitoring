@@ -503,24 +503,7 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
-{alerts.length > 0 && (
-            <div className="h-10 glass-panel rounded-xl overflow-hidden flex items-center px-4 relative flex-shrink-0">
-              <div className="absolute left-0 top-0 bottom-0 px-3 bg-error/20 flex items-center z-10 border-r border-error/30">
-                <span className="text-[10px] font-bold text-error uppercase">实时告警</span>
-              </div>
-              <div className="flex-1 whitespace-nowrap overflow-hidden">
-                <div className="inline-block animate-marquee pl-[100%]">
-                  {alerts.slice(-5).reverse().map((a, i) => (
-                    <span key={i} className="mx-8 text-xs text-on-surface-variant flex items-center gap-2 inline-flex">
-                      <span className="w-1.5 h-1.5 bg-error rounded-full" />
-                      [{new Date().toLocaleTimeString()}] {a.class_name} #{a.track_id} 闯入围栏
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-          {/* Charts below video */}
+{/* Charts below video */}
           <div className="grid grid-cols-2 gap-3 flex-shrink-0" style={{ height: 180 }}>
             <div className="glass-panel rounded-xl p-3 flex flex-col">
               <h3 className="text-[10px] text-on-surface-variant uppercase tracking-wider mb-1">告警趋势 (7d)</h3>
