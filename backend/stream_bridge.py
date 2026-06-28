@@ -170,15 +170,7 @@ def _source_worker(
                 "tracks": track_states,
                 "fence_pixels": fence_pixels,
                 "orb_tracking": fence_checker.orb_active,
-                "alerts": [
-                    {
-                        "class_name": a["class_name"],
-                        "confidence": a["confidence"],
-                        "bbox": a["bbox"],
-                        "track_id": a["track_id"],
-                    }
-                    for a in alerts
-                ],
+                "alerts": alerts,
             })
 
             time.sleep(1.0 / 25.0)
