@@ -23,12 +23,17 @@ class WSBroadcaster:
     def __init__(self):
         # source_id -> {client_id: WebSocket}
         self._sources: dict[str, dict[int, WebSocket]] = {}
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None  # lazy init for Python 3.9 compat
         self._next_id = 0
+
+    def _ensure_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def subscribe(self, source_id: str, ws: WebSocket) -> int:
         await ws.accept()
-        async with self._lock:
+        async with self._ensure_lock():
             cid = self._next_id
             self._next_id += 1
             if source_id not in self._sources:
@@ -38,7 +43,7 @@ class WSBroadcaster:
         return cid
 
     async def unsubscribe(self, source_id: str, cid: int) -> None:
-        async with self._lock:
+        async with self._ensure_lock():
             if source_id in self._sources:
                 self._sources[source_id].pop(cid, None)
         logger.info(f"WS client #{cid} disconnected from {source_id}")
@@ -46,7 +51,7 @@ class WSBroadcaster:
     async def broadcast_to_source(self, source_id: str, data: dict) -> None:
         """Send JSON message to all clients subscribed to a specific source."""
         payload = json.dumps(data, ensure_ascii=False)
-        async with self._lock:
+        async with self._ensure_lock():
             clients = self._sources.get(source_id, {})
             dead = []
             for cid, ws in clients.items():

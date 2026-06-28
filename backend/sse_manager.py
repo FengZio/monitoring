@@ -2,7 +2,7 @@
 import asyncio
 import json
 import logging
-import time
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +12,19 @@ class SSEBroadcaster:
 
     def __init__(self):
         self._queues: dict[int, asyncio.Queue] = {}
-        self._lock = asyncio.Lock()
+        self._lock: Optional[asyncio.Lock] = None  # lazy init for Python 3.9 compat
         self._next_id = 0
         self._frame_index = 0
+
+    def _ensure_lock(self) -> asyncio.Lock:
+        if self._lock is None:
+            self._lock = asyncio.Lock()
+        return self._lock
 
     async def subscribe(self) -> tuple[int, asyncio.Queue]:
         """Register a new SSE client. Returns (client_id, queue)."""
         q: asyncio.Queue = asyncio.Queue(maxsize=120)
-        async with self._lock:
+        async with self._ensure_lock():
             cid = self._next_id
             self._next_id += 1
             self._queues[cid] = q
@@ -28,7 +33,7 @@ class SSEBroadcaster:
 
     async def unsubscribe(self, client_id: int) -> None:
         """Remove a disconnected SSE client."""
-        async with self._lock:
+        async with self._ensure_lock():
             self._queues.pop(client_id, None)
         logger.info(f"SSE client #{client_id} unsubscribed ({len(self._queues)} remaining)")
 
@@ -38,7 +43,7 @@ class SSEBroadcaster:
         self._frame_index += 1
         payload = json.dumps(data, ensure_ascii=False)
 
-        async with self._lock:
+        async with self._ensure_lock():
             dead = []
             for cid, q in self._queues.items():
                 try:
