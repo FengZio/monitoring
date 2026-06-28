@@ -149,7 +149,7 @@ def _source_worker(
                 "detections": detections,
                 "tracks": track_states,
                 "fence_pixels": fence_pixels,
-                "orb_tracking": fence_checker.auto_tracking_active,
+                "orb_tracking": fence_checker.orb_active,
                 "alerts": [
                     {
                         "class_name": a["class_name"],
