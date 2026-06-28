@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 from config import SNAPSHOTS_DIR
-from database import SessionLocal, Alert, Fence
+from database import SessionLocal, Alert, Fence, Config
 from notifier import send_alert_notification
 from sse_manager import sse_broadcaster
 from routes.ws_stream import ws_broadcaster, encode_frame
@@ -42,6 +42,7 @@ def _source_worker(
     stop_event: Event,
     detector: Detector,
     fence_checker: FenceChecker,
+    alert_classes: set | None = None,
 ) -> None:
     """Runs in a thread: open source -> detect -> check fence -> encode -> send."""
     try:
@@ -98,6 +99,10 @@ def _source_worker(
             orb_fence = fence_checker.track_fence(frame_proc)
 
             # Fence check
+
+            # Filter alerts by configured alert classes
+            if alert_classes:
+                alerts = [a for a in alerts if a["class_name"] in alert_classes]
             alerts = fence_checker.update(detections)
             track_states = fence_checker.get_track_states()
             fence_pixels = orb_fence if orb_fence else fence_checker.get_fence_pixels()
@@ -204,10 +209,21 @@ class StreamManager:
         if fence_checker is None:
             fence_checker = FenceChecker()
 
+        # Read alert classes from config
+        alert_classes: set | None = None
+        try:
+            db = SessionLocal()
+            cfg = db.query(Config).filter(Config.id == 1).first()
+            if cfg and cfg.alert_classes:
+                alert_classes = set(json.loads(cfg.alert_classes))
+            db.close()
+        except Exception:
+            pass
+
         thread = Thread(
             target=_source_worker,
             args=(source_id, source_type, source_arg, queue, stop_event,
-                  self.detector, fence_checker),
+                  self.detector, fence_checker, alert_classes),
             daemon=True,
         )
         thread.start()

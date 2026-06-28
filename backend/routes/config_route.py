@@ -1,10 +1,13 @@
 """通知配置路由"""
+import json
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from database import SessionLocal, Config
 
 router = APIRouter(prefix="/api/config", tags=["config"])
+
+DEFAULT_CLASSES = ["person", "bicycle", "car", "motorcycle", "bus", "truck"]
 
 
 class ConfigPayload(BaseModel):
@@ -16,6 +19,7 @@ class ConfigPayload(BaseModel):
     email_to: str = ""
     dingtalk_enabled: bool = False
     dingtalk_webhook: str = ""
+    alert_classes: list[str] = []
 
 
 @router.get("")
@@ -23,8 +27,14 @@ def get_config():
     db = SessionLocal()
     try:
         cfg = db.query(Config).filter(Config.id == 1).first()
+        classes = DEFAULT_CLASSES
+        if cfg and cfg.alert_classes:
+            try:
+                classes = json.loads(cfg.alert_classes)
+            except (json.JSONDecodeError, TypeError):
+                pass
         if not cfg:
-            return ConfigPayload().model_dump()
+            return {**ConfigPayload().model_dump(), "alert_classes": classes}
         return {
             "email_enabled": cfg.email_enabled,
             "email_smtp_server": cfg.email_smtp_server or "",
@@ -34,6 +44,7 @@ def get_config():
             "email_to": cfg.email_to or "",
             "dingtalk_enabled": cfg.dingtalk_enabled,
             "dingtalk_webhook": cfg.dingtalk_webhook or "",
+            "alert_classes": classes,
         }
     finally:
         db.close()
@@ -55,6 +66,8 @@ def save_config(payload: ConfigPayload):
         cfg.email_to = payload.email_to
         cfg.dingtalk_enabled = payload.dingtalk_enabled
         cfg.dingtalk_webhook = payload.dingtalk_webhook
+        if payload.alert_classes:
+            cfg.alert_classes = json.dumps(payload.alert_classes, ensure_ascii=False)
         db.commit()
         return {"status": "saved"}
     finally:

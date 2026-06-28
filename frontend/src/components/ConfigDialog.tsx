@@ -1,22 +1,39 @@
 import React, { useState, useEffect } from "react";
 import { getConfig, saveConfig } from "../services/api";
 import type { ConfigData } from "../types";
+import { ALL_CLASSES } from "../types";
 
 interface Props { open: boolean; onClose: () => void; }
+
+const CLASS_LABELS: Record<string, string> = {
+  person: "人员", bicycle: "自行车", car: "轿车",
+  motorcycle: "摩托车", bus: "巴士", truck: "卡车",
+};
 
 const ConfigDialog: React.FC<Props> = ({ open, onClose }) => {
   const [cfg, setCfg] = useState<ConfigData>({
     email_enabled: false, email_smtp_server: "", email_smtp_port: 465,
     email_user: "", email_password: "", email_to: "",
     dingtalk_enabled: false, dingtalk_webhook: "",
+    alert_classes: ALL_CLASSES,
   });
 
   useEffect(() => {
-    if (open) getConfig().then(setCfg).catch(() => {});
+    if (open) getConfig().then((d) => setCfg({ ...cfg, ...d, alert_classes: d.alert_classes || ALL_CLASSES })).catch(() => {});
   }, [open]);
 
   const handleSave = async () => {
     try { await saveConfig(cfg); onClose(); } catch { /* */ }
+  };
+
+  const toggleClass = (name: string) => {
+    const current = cfg.alert_classes || [];
+    setCfg({
+      ...cfg,
+      alert_classes: current.includes(name)
+        ? current.filter((c) => c !== name)
+        : [...current, name],
+    });
   };
 
   if (!open) return null;
@@ -58,6 +75,22 @@ const ConfigDialog: React.FC<Props> = ({ open, onClose }) => {
             <input placeholder="Webhook URL" value={cfg.dingtalk_webhook} onChange={(e) => setCfg({ ...cfg, dingtalk_webhook: e.target.value })}
               className="w-full bg-surface-container border border-outline-variant rounded p-1.5 text-xs text-on-surface ml-6" />
           )}
+        </div>
+
+        {/* Alert Class Filter */}
+        <div className="space-y-2">
+          <h4 className="text-xs text-on-surface font-medium">告警目标类别</h4>
+          <p className="text-[10px] text-on-surface-variant">仅勾选的类别触发围栏告警</p>
+          <div className="flex flex-wrap gap-2">
+            {ALL_CLASSES.map((name) => (
+              <label key={name} className="flex items-center gap-1.5 text-xs text-on-surface cursor-pointer">
+                <input type="checkbox" checked={(cfg.alert_classes || []).includes(name)}
+                  onChange={() => toggleClass(name)}
+                  className="accent-primary-container" />
+                {CLASS_LABELS[name] || name}
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

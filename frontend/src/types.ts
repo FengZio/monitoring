@@ -75,6 +75,7 @@ export interface ConfigData {
   email_to: string;
   dingtalk_enabled: boolean;
   dingtalk_webhook: string;
+  alert_classes: string[];
 }
 export interface StatsOverview {
   total_today: number;
@@ -86,3 +87,5 @@ export interface DailyStat { date: string; count: number; }
 export interface HourlyStat { hour: number; count: number; }
 export interface ClassDistItem { name: string; count: number; ratio: number; }
 export interface HeatmapData { points: [number, number][]; total: number; }
+
+export const ALL_CLASSES = ["person", "bicycle", "car", "motorcycle", "bus", "truck"];

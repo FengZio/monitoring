@@ -2,7 +2,7 @@
 import datetime
 import json
 
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, create_engine
+from sqlalchemy import Column, text, Integer, String, Float, Boolean, DateTime, Text, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -50,6 +50,7 @@ class Config(Base):
     email_to = Column(String(256))
     dingtalk_enabled = Column(Boolean, default=False)
     dingtalk_webhook = Column(String(512))
+    alert_classes = Column(Text, default='["person","bicycle","car","motorcycle","bus","truck"]')
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -59,6 +60,13 @@ SessionLocal = sessionmaker(bind=engine)
 
 def init_db():
     Base.metadata.create_all(engine)
+    # Add alert_classes column if missing (migration for existing DB)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE config ADD COLUMN alert_classes TEXT DEFAULT '[\"person\",\"bicycle\",\"car\",\"motorcycle\",\"bus\",\"truck\"]'"))
+        except Exception:
+            pass  # column already exists
+        conn.commit()
     with SessionLocal() as session:
         if not session.query(Fence).filter(Fence.source_id == "default").first():
             session.add(Fence(id=1, source_id="default", points=json.dumps([]), world_points=json.dumps([])))
