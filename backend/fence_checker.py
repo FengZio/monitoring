@@ -126,9 +126,13 @@ class FenceChecker:
 
     # ==================== Foot point ====================
 
-    def _foot_point(self, bbox: list[int]) -> tuple[float, float]:
-        x1, _, x2, y2 = bbox
-        return ((x1 + x2) / 2.0, float(y2))
+    def _check_point(self, bbox: list[int], class_name: str) -> tuple[float, float]:
+        x1, y1, x2, y2 = bbox
+        cx = (x1 + x2) / 2.0
+        if class_name == "person":
+            return (cx, float(y2))           # foot point
+        else:
+            return (cx, (y1 + y2) / 2.0)     # center point
 
     # ==================== Point-in-polygon ====================
 
@@ -155,7 +159,7 @@ class FenceChecker:
 
         for det in detections:
             bt_track_id = det.get("track_id")
-            check_pt = self._foot_point(det["bbox"])
+            check_pt = self._check_point(det["bbox"], det["class_name"])
             currently_inside = (
                 self.has_fence
                 and self.point_in_polygon(check_pt[0], check_pt[1], self._fence_points)

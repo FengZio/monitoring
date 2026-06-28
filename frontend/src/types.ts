@@ -76,6 +76,7 @@ export interface ConfigData {
   dingtalk_enabled: boolean;
   dingtalk_webhook: string;
   alert_classes: string[];
+  picgo_key: string;
 }
 export interface StatsOverview {
   total_today: number;

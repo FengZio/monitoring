@@ -51,6 +51,7 @@ class Config(Base):
     dingtalk_enabled = Column(Boolean, default=False)
     dingtalk_webhook = Column(String(512))
     alert_classes = Column(Text, default='["person","bicycle","car","motorcycle","bus","truck"]')
+    picgo_key = Column(String(256), default="")
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -66,6 +67,10 @@ def init_db():
             conn.execute(text("ALTER TABLE config ADD COLUMN alert_classes TEXT DEFAULT '[\"person\",\"bicycle\",\"car\",\"motorcycle\",\"bus\",\"truck\"]'"))
         except Exception:
             pass  # column already exists
+        try:
+            conn.execute(text("ALTER TABLE config ADD COLUMN picgo_key VARCHAR(256) DEFAULT ''"))
+        except Exception:
+            pass
         conn.commit()
     with SessionLocal() as session:
         if not session.query(Fence).filter(Fence.source_id == "default").first():

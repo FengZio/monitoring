@@ -1,5 +1,6 @@
 """异步通知服务 --- 邮件 + 钉钉 Webhook"""
 import asyncio
+import time
 import logging
 import os
 import smtplib
@@ -7,7 +8,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 from typing import Optional
@@ -15,6 +15,10 @@ from typing import Optional
 from database import SessionLocal, Config
 
 logger = logging.getLogger(__name__)
+
+# 10s 内只发送一次钉钉通知，避免频繁上传图片
+_last_dingtalk_time: float = 0.0
+_DINGTALK_COOLDOWN: float = 10.0
 
 
 async def send_alert_notification(alert_info: dict) -> None:
@@ -61,41 +65,51 @@ def _send_email(alert_info: dict) -> None:
         db.close()
 
 
-async def _upload_dingtalk_media(client: httpx.AsyncClient, webhook_url: str, file_path: str) -> Optional[str]:
-    """Upload an image to DingTalk robot media API, return media_id or None."""
+async def _upload_to_picgo(client: httpx.AsyncClient, api_key: str, file_path: str) -> Optional[str]:
+    """Upload an image to picgo.net, return public URL or None."""
     try:
-        parsed = urlparse(webhook_url)
-        params = parse_qs(parsed.query)
-        access_token = params.get("access_token", [None])[0]
-        if not access_token:
-            logger.error("DingTalk: cannot extract access_token from webhook URL")
+        if not api_key:
+            logger.error("Picgo: API key is empty")
             return None
 
-        upload_url = "https://oapi.dingtalk.com/robot/messageFile/upload?access_token={}".format(access_token)
+        upload_url = "https://www.picgo.net/api/1/upload"
         file_name = Path(file_path).name
 
+        headers = {"X-API-Key": api_key}
         with open(file_path, "rb") as f:
-            files = {"file": (file_name, f, "image/jpeg")}
-            resp = await client.post(upload_url, files=files)
+            files = {"source": (file_name, f, "image/jpeg")}
+            resp = await client.post(upload_url, headers=headers, files=files)
 
         if resp.status_code == 200:
             data = resp.json()
-            if data.get("errcode") == 0:
-                media_id = data.get("media_id", "")
-                logger.info("DingTalk media uploaded: {}".format(media_id))
-                return media_id
+            if data.get("status_code") == 200:
+                image_url = data.get("image", {}).get("url", "")
+                if image_url:
+                    logger.info("Picgo uploaded: {}".format(image_url))
+                    return image_url
+                else:
+                    logger.error("Picgo upload: no URL in response")
+                    return None
             else:
-                logger.error("DingTalk upload error: {}".format(data))
+                logger.error("Picgo upload error: {}".format(data))
                 return None
         else:
-            logger.error("DingTalk upload HTTP {}: {}".format(resp.status_code, resp.text))
+            logger.error("Picgo upload HTTP {}: {}".format(resp.status_code, resp.text))
             return None
     except Exception as e:
-        logger.error("DingTalk upload failed: {}".format(e))
+        logger.error("Picgo upload failed: {}".format(e))
         return None
 
 async def _send_dingtalk(alert_info: dict) -> None:
     """Send DingTalk bot message with rich tracking info and snapshot image."""
+    global _last_dingtalk_time
+    now = time.monotonic()
+    if now - _last_dingtalk_time < _DINGTALK_COOLDOWN:
+        remaining = _DINGTALK_COOLDOWN - (now - _last_dingtalk_time)
+        logger.debug("DingTalk suppressed (cooldown %.1fs)", remaining)
+        return
+    _last_dingtalk_time = now
+
     db = SessionLocal()
     try:
         cfg = db.query(Config).filter(Config.id == 1).first()
@@ -129,11 +143,12 @@ async def _send_dingtalk(alert_info: dict) -> None:
         ).format(class_name, track_id, confidence, pattern, now_str)
 
         async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
-            # Upload snapshot image to DingTalk if available
-            if snapshot_path and os.path.isfile(snapshot_path):
-                media_id = await _upload_dingtalk_media(client, cfg.dingtalk_webhook, snapshot_path)
-                if media_id:
-                    text += "\n![snapshot]({})\n".format(media_id)
+            # Upload snapshot image to picgo.net if available
+            picgo_key = getattr(cfg, "picgo_key", "") or ""
+            if snapshot_path and os.path.isfile(snapshot_path) and picgo_key:
+                image_url = await _upload_to_picgo(client, picgo_key, snapshot_path)
+                if image_url:
+                    text += "\n![snapshot]({})\n".format(image_url)
 
             payload = {
                 "msgtype": "markdown",

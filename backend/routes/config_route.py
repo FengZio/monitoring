@@ -20,6 +20,7 @@ class ConfigPayload(BaseModel):
     dingtalk_enabled: bool = False
     dingtalk_webhook: str = ""
     alert_classes: list[str] = []
+    picgo_key: str = ""
 
 
 @router.get("")
@@ -45,6 +46,7 @@ def get_config():
             "dingtalk_enabled": cfg.dingtalk_enabled,
             "dingtalk_webhook": cfg.dingtalk_webhook or "",
             "alert_classes": classes,
+            "picgo_key": cfg.picgo_key or "",
         }
     finally:
         db.close()
@@ -66,6 +68,7 @@ def save_config(payload: ConfigPayload):
         cfg.email_to = payload.email_to
         cfg.dingtalk_enabled = payload.dingtalk_enabled
         cfg.dingtalk_webhook = payload.dingtalk_webhook
+        cfg.picgo_key = payload.picgo_key
         if payload.alert_classes:
             cfg.alert_classes = json.dumps(payload.alert_classes, ensure_ascii=False)
         db.commit()

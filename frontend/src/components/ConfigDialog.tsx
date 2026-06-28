@@ -14,7 +14,7 @@ const ConfigDialog: React.FC<Props> = ({ open, onClose }) => {
   const [cfg, setCfg] = useState<ConfigData>({
     email_enabled: false, email_smtp_server: "", email_smtp_port: 465,
     email_user: "", email_password: "", email_to: "",
-    dingtalk_enabled: false, dingtalk_webhook: "",
+    dingtalk_enabled: false, dingtalk_webhook: "", picgo_key: "",
     alert_classes: ALL_CLASSES,
   });
 
@@ -72,8 +72,12 @@ const ConfigDialog: React.FC<Props> = ({ open, onClose }) => {
               className="accent-primary-container" /> 启用钉钉通知
           </label>
           {cfg.dingtalk_enabled && (
+            <>
             <input placeholder="Webhook URL" value={cfg.dingtalk_webhook} onChange={(e) => setCfg({ ...cfg, dingtalk_webhook: e.target.value })}
               className="w-full bg-surface-container border border-outline-variant rounded p-1.5 text-xs text-on-surface ml-6" />
+            <input placeholder="Picgo API Key" value={cfg.picgo_key || ""} onChange={(e) => setCfg({ ...cfg, picgo_key: e.target.value })}
+              className="w-full bg-surface-container border border-outline-variant rounded p-1.5 text-xs text-on-surface ml-6 mt-2" />
+            </>
           )}
         </div>
 
