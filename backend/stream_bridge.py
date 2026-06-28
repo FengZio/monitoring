@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 CLIPS_DIR = Path(__file__).resolve().parent / "uploads" / "clips"
 CLIPS_DIR.mkdir(parents=True, exist_ok=True)
 
-
 # ---------------------------------------------------------------------------
 # Thread worker (model shared via Detector singleton)
 # ---------------------------------------------------------------------------
@@ -42,7 +41,6 @@ def _source_worker(
     stop_event: Event,
     detector: Detector,
     fence_checker: FenceChecker,
-    alert_classes: Optional[Set] = None,
 ) -> None:
     """Runs in a thread: open source -> detect -> check fence -> encode -> send."""
     try:
@@ -102,9 +100,17 @@ def _source_worker(
 
             alerts = fence_checker.update(detections)
 
-            # Filter alerts by configured alert classes
-            if alert_classes:
-                alerts = [a for a in alerts if a["class_name"] in alert_classes]
+            # Filter alerts by configured alert classes (live config read)
+            try:
+                db = SessionLocal()
+                cfg = db.query(Config).filter(Config.id == 1).first()
+                if cfg and cfg.alert_classes:
+                    classes = set(json.loads(cfg.alert_classes))
+                    alerts = [a for a in alerts if a["class_name"] in classes]
+                db.close()
+            except Exception:
+                pass
+
             track_states = fence_checker.get_track_states()
             fence_pixels = orb_fence if orb_fence else fence_checker.get_fence_pixels()
 
@@ -180,7 +186,6 @@ def _source_worker(
             pass
         result_queue.put({"source_id": source_id, "type": "stopped"})
 
-
 # ---------------------------------------------------------------------------
 # Stream Manager (main thread)
 # ---------------------------------------------------------------------------
@@ -210,21 +215,10 @@ class StreamManager:
         if fence_checker is None:
             fence_checker = FenceChecker()
 
-        # Read alert classes from config
-        alert_classes: Optional[Set] = None
-        try:
-            db = SessionLocal()
-            cfg = db.query(Config).filter(Config.id == 1).first()
-            if cfg and cfg.alert_classes:
-                alert_classes = set(json.loads(cfg.alert_classes))
-            db.close()
-        except Exception:
-            pass
-
         thread = Thread(
             target=_source_worker,
             args=(source_id, source_type, source_arg, queue, stop_event,
-                  self.detector, fence_checker, alert_classes),
+                  self.detector, fence_checker),
             daemon=True,
         )
         thread.start()
@@ -401,6 +395,5 @@ class StreamManager:
             logger.error(f"Failed to attach clip: {e}")
         finally:
             db.close()
-
 
 stream_manager = StreamManager()
