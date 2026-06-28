@@ -1,10 +1,13 @@
 """异步通知服务 --- 邮件 + 钉钉 Webhook"""
 import asyncio
 import logging
+import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -57,8 +60,42 @@ def _send_email(alert_info: dict) -> None:
         db.close()
 
 
+async def _upload_dingtalk_media(client: httpx.AsyncClient, webhook_url: str, file_path: str) -> str | None:
+    """Upload an image to DingTalk robot media API, return media_id or None."""
+    try:
+        parsed = urlparse(webhook_url)
+        params = parse_qs(parsed.query)
+        access_token = params.get("access_token", [None])[0]
+        if not access_token:
+            logger.error("DingTalk: cannot extract access_token from webhook URL")
+            return None
+
+        upload_url = "https://oapi.dingtalk.com/robot/messageFile/upload?access_token={}".format(access_token)
+        file_name = Path(file_path).name
+
+        with open(file_path, "rb") as f:
+            files = {"file": (file_name, f, "image/jpeg")}
+            resp = await client.post(upload_url, files=files)
+
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("errcode") == 0:
+                media_id = data.get("media_id", "")
+                logger.info("DingTalk media uploaded: {}".format(media_id))
+                return media_id
+            else:
+                logger.error("DingTalk upload error: {}".format(data))
+                return None
+        else:
+            logger.error("DingTalk upload HTTP {}: {}".format(resp.status_code, resp.text))
+            return None
+    except Exception as e:
+        logger.error("DingTalk upload failed: {}".format(e))
+        return None
+
+
 async def _send_dingtalk(alert_info: dict) -> None:
-    """Send DingTalk bot message with rich tracking info."""
+    """Send DingTalk bot message with rich tracking info and snapshot image."""
     db = SessionLocal()
     try:
         cfg = db.query(Config).filter(Config.id == 1).first()
@@ -73,7 +110,6 @@ async def _send_dingtalk(alert_info: dict) -> None:
         repeat_interval = alert_info.get("repeat_interval", 0)
         snapshot_path = alert_info.get("snapshot_path", "")
 
-        # Build rich message based on pattern
         if alert_count >= 5:
             pattern = "[高频] 闯入警告 (第{}次)".format(alert_count)
         elif is_repeat and repeat_interval < 60:
@@ -92,18 +128,20 @@ async def _send_dingtalk(alert_info: dict) -> None:
             "- 时间: {}\n"
         ).format(class_name, track_id, confidence, pattern, now_str)
 
-        if snapshot_path:
-            snap_name = snapshot_path.replace("\\", "/").split("/")[-1]
-            text += "- 截图: [查看](http://localhost:8000/snapshots/{})\n".format(snap_name)
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
+            # Upload snapshot image to DingTalk if available
+            if snapshot_path and os.path.isfile(snapshot_path):
+                media_id = await _upload_dingtalk_media(client, cfg.dingtalk_webhook, snapshot_path)
+                if media_id:
+                    text += "\n![snapshot]({})\n".format(media_id)
 
-        payload = {
-            "msgtype": "markdown",
-            "markdown": {
-                "title": "电子围栏告警",
-                "text": text,
-            },
-        }
-        async with httpx.AsyncClient(timeout=10, trust_env=False) as client:
+            payload = {
+                "msgtype": "markdown",
+                "markdown": {
+                    "title": "电子围栏告警",
+                    "text": text,
+                },
+            }
             resp = await client.post(cfg.dingtalk_webhook, json=payload)
             if resp.status_code == 200:
                 logger.info("DingTalk sent OK")
