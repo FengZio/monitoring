@@ -100,10 +100,11 @@ def _source_worker(
 
             # Fence check
 
+            alerts = fence_checker.update(detections)
+
             # Filter alerts by configured alert classes
             if alert_classes:
                 alerts = [a for a in alerts if a["class_name"] in alert_classes]
-            alerts = fence_checker.update(detections)
             track_states = fence_checker.get_track_states()
             fence_pixels = orb_fence if orb_fence else fence_checker.get_fence_pixels()
 
