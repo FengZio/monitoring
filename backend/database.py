@@ -39,15 +39,6 @@ class Fence(Base):
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
-class Calibration(Base):
-    __tablename__ = "calibration"
-    id = Column(Integer, primary_key=True)
-    source_id = Column(String(32), default="default")
-    pixel_points = Column(Text)
-    world_points = Column(Text)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
-
-
 class Config(Base):
     __tablename__ = "config"
     id = Column(Integer, primary_key=True)
@@ -73,8 +64,6 @@ def init_db():
             session.add(Fence(id=1, source_id="default", points=json.dumps([]), world_points=json.dumps([])))
         if not session.query(Config).first():
             session.add(Config(id=1))
-        if not session.query(Calibration).filter(Calibration.source_id == "default").first():
-            session.add(Calibration(id=1, source_id="default", pixel_points=json.dumps([]), world_points=json.dumps([])))
         session.commit()
 
 

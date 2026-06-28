@@ -6,23 +6,16 @@ interface FenceCanvasProps {
   points: [number, number][];
   onPointsChange: (points: [number, number][]) => void;
   editing: boolean;
-  calibrating: boolean;
-  calibPoints: [number, number][];
-  onCalibPointsChange: (points: [number, number][]) => void;
-  onCalibComplete: () => void;
 }
 
 const SNAP_DIST = 12; // px to snap to first point for auto-close
 
 const FenceCanvas: React.FC<FenceCanvasProps> = ({
   width, height, points, onPointsChange, editing,
-  calibrating, calibPoints, onCalibPointsChange, onCalibComplete,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [hoverNearFirst, setHoverNearFirst] = useState(false);
-  const isActive = editing || calibrating;
-  const displayPoints = calibrating ? calibPoints : points;
 
   const getPos = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>): [number, number] => {
@@ -42,26 +35,7 @@ const FenceCanvas: React.FC<FenceCanvasProps> = ({
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
 
-    if (displayPoints.length === 0) return;
-
-    if (calibrating) {
-      displayPoints.forEach(([x, y], i) => {
-        ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2);
-        ctx.fillStyle = "#1677ff"; ctx.fill();
-        ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
-        ctx.fillStyle = "#fff"; ctx.font = "bold 13px monospace";
-        ctx.textAlign = "center"; ctx.fillText(`${i + 1}`, x, y - 14); ctx.textAlign = "start";
-      });
-      if (displayPoints.length >= 2) {
-        ctx.beginPath(); ctx.setLineDash([4, 4]);
-        ctx.strokeStyle = "rgba(22,119,255,0.6)"; ctx.lineWidth = 2;
-        ctx.moveTo(displayPoints[0][0], displayPoints[0][1]);
-        for (let i = 1; i < displayPoints.length; i++) ctx.lineTo(displayPoints[i][0], displayPoints[i][1]);
-        if (displayPoints.length === 4) ctx.closePath();
-        ctx.stroke(); ctx.setLineDash([]);
-      }
-      return;
-    }
+    if (points.length === 0) return;
 
     const isClosed = points.length >= 3 && !editing;
 
@@ -74,12 +48,12 @@ const FenceCanvas: React.FC<FenceCanvasProps> = ({
     }
 
     // edges
-    if (displayPoints.length >= 2) {
-      ctx.beginPath(); ctx.moveTo(displayPoints[0][0], displayPoints[0][1]);
-      for (let i = 1; i < displayPoints.length; i++) ctx.lineTo(displayPoints[i][0], displayPoints[i][1]);
+    if (points.length >= 2) {
+      ctx.beginPath(); ctx.moveTo(points[0][0], points[0][1]);
+      for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
       // preview closing line if hovering near first point
-      if (editing && displayPoints.length >= 3 && hoverNearFirst && displayPoints[0]) {
-        ctx.lineTo(displayPoints[0][0], displayPoints[0][1]);
+      if (editing && points.length >= 3 && hoverNearFirst && points[0]) {
+        ctx.lineTo(points[0][0], points[0][1]);
       }
       ctx.strokeStyle = "rgba(255, 50, 50, 0.9)"; ctx.lineWidth = 2;
       ctx.setLineDash(isClosed ? [] : [6, 3]);
@@ -87,29 +61,23 @@ const FenceCanvas: React.FC<FenceCanvasProps> = ({
     }
 
     // vertices
-    displayPoints.forEach(([x, y], i) => {
+    points.forEach(([x, y], i) => {
       const r = i === 0 ? 6 : 5;
       ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fillStyle = i === 0 ? "#FFD700" : "#FF3333"; ctx.fill();
       ctx.strokeStyle = "#fff"; ctx.lineWidth = 1; ctx.stroke();
       // label
-      if (editing && displayPoints.length > 1) {
+      if (editing && points.length > 1) {
         ctx.fillStyle = "#fff"; ctx.font = "11px monospace";
         ctx.textAlign = "center"; ctx.fillText(`${i + 1}`, x, y - 12); ctx.textAlign = "start";
       }
     });
-  }, [displayPoints, width, height, editing, hoverNearFirst, points]);
+  }, [points, width, height, editing, hoverNearFirst]);
 
   useEffect(() => { redraw(); }, [redraw]);
 
   // ---- click: add point or auto-close ----
   const handleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isActive) return;
-    if (calibrating) {
-      if (calibPoints.length >= 4) return;
-      onCalibPointsChange([...calibPoints, getPos(e)]);
-      return;
-    }
     if (!editing) return;
 
     const pos = getPos(e);
@@ -130,31 +98,22 @@ const FenceCanvas: React.FC<FenceCanvasProps> = ({
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragIdx !== null) {
       const pos = getPos(e);
-      const next = [...displayPoints]; next[dragIdx] = pos;
+      const next = [...points]; next[dragIdx] = pos;
       const canvas = canvasRef.current;
       if (!canvas) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
       ctx.clearRect(0, 0, width, height);
-      if (calibrating) {
-        ctx.fillStyle = "#1677ff";
-        next.forEach(([x, y], i) => {
-          ctx.beginPath(); ctx.arc(x, y, 6, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = "#fff"; ctx.font = "bold 13px monospace";
-          ctx.fillText(`${i + 1}`, x, y - 14); ctx.fillStyle = "#1677ff";
-        });
-      } else {
-        if (next.length >= 2) {
-          ctx.beginPath(); ctx.moveTo(next[0][0], next[0][1]);
-          for (let i = 1; i < next.length; i++) ctx.lineTo(next[i][0], next[i][1]);
-          ctx.strokeStyle = "rgba(255,50,50,0.9)"; ctx.lineWidth = 2; ctx.setLineDash([6, 3]);
-          ctx.stroke(); ctx.setLineDash([]);
-        }
-        next.forEach(([x, y], i) => {
-          ctx.beginPath(); ctx.arc(x, y, i === 0 ? 6 : 5, 0, Math.PI * 2);
-          ctx.fillStyle = i === 0 ? "#FFD700" : "#FF3333"; ctx.fill();
-        });
+      if (next.length >= 2) {
+        ctx.beginPath(); ctx.moveTo(next[0][0], next[0][1]);
+        for (let i = 1; i < next.length; i++) ctx.lineTo(next[i][0], next[i][1]);
+        ctx.strokeStyle = "rgba(255,50,50,0.9)"; ctx.lineWidth = 2; ctx.setLineDash([6, 3]);
+        ctx.stroke(); ctx.setLineDash([]);
       }
+      next.forEach(([x, y], i) => {
+        ctx.beginPath(); ctx.arc(x, y, i === 0 ? 6 : 5, 0, Math.PI * 2);
+        ctx.fillStyle = i === 0 ? "#FFD700" : "#FF3333"; ctx.fill();
+      });
       return;
     }
     // track hover proximity to first point
@@ -167,23 +126,23 @@ const FenceCanvas: React.FC<FenceCanvasProps> = ({
   };
 
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isActive) return;
+    if (!editing) return;
     const pos = getPos(e);
-    const idx = displayPoints.findIndex(([x, y]) => Math.hypot(x - pos[0], y - pos[1]) < 8);
+    const idx = points.findIndex(([x, y]) => Math.hypot(x - pos[0], y - pos[1]) < 8);
     if (idx >= 0) setDragIdx(idx);
   };
 
   const handleMouseUp = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (dragIdx === null) return;
     const pos = getPos(e);
-    const next = [...displayPoints]; next[dragIdx] = pos;
-    calibrating ? onCalibPointsChange(next) : onPointsChange(next);
+    const next = [...points]; next[dragIdx] = pos;
+    onPointsChange(next);
     setDragIdx(null);
   };
 
   const handleContextMenu = (e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
-    if (!editing || calibrating || !isActive) return;
+    if (!editing) return;
     const pos = getPos(e);
     const idx = points.findIndex(([x, y]) => Math.hypot(x - pos[0], y - pos[1]) < 8);
     if (idx >= 0) onPointsChange(points.filter((_, i) => i !== idx));
@@ -192,7 +151,7 @@ const FenceCanvas: React.FC<FenceCanvasProps> = ({
   return (
     <canvas ref={canvasRef}
       style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%",
-        cursor: isActive ? "crosshair" : "default" }}
+        cursor: editing ? "crosshair" : "default" }}
       onClick={handleClick} onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}
       onContextMenu={handleContextMenu} />

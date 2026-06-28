@@ -17,7 +17,7 @@ import cv2
 import numpy as np
 
 from config import SNAPSHOTS_DIR
-from database import SessionLocal, Alert, Fence, Calibration
+from database import SessionLocal, Alert, Fence
 from notifier import send_alert_notification
 from sse_manager import sse_broadcaster
 from routes.ws_stream import ws_broadcaster, encode_frame

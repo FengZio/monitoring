@@ -35,9 +35,7 @@ export interface FenceData {
   points: [number, number][];
   enabled: boolean;
   mode: string;
-  has_calibration: boolean;
-  pixel_points: [number, number][];
-  world_points: [number, number][];
+
 }
 export interface VideoItem { filename: string; size: number; }
 export interface VideoSource {

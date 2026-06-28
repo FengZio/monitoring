@@ -45,9 +45,7 @@ export function saveFence(points: [number, number][], sourceId = "default", mode
 export function clearFence(sourceId = "default") {
   return request(`/api/fence?source_id=${sourceId}`, { method: "DELETE" });
 }
-export function saveCalibration(pixelPoints: [number, number][], worldPoints: [number, number][], sourceId = "default") {
-  return request(`/api/fence/calibrate?source_id=${sourceId}`, { method: "POST", body: JSON.stringify({ pixel_points: pixelPoints, world_points: worldPoints }) });
-}
+
 
 // ---- Alerts ----
 export function getAlerts(page = 1, pageSize = 20, status = "", sourceId = ""): Promise<AlertListResponse> {

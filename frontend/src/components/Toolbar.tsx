@@ -3,7 +3,7 @@ import { Button, Upload, Tag, Space, Select, message } from "antd";
 import {
   PlayCircleOutlined, PauseCircleOutlined, SettingOutlined, EditOutlined,
   CheckOutlined, DeleteOutlined, UploadOutlined, CameraOutlined,
-  AimOutlined, CaretRightOutlined, DashboardOutlined, PlusOutlined,
+  CaretRightOutlined, DashboardOutlined, PlusOutlined,
 } from "@ant-design/icons";
 import { uploadVideo, listVideos, previewWebcam, previewFile } from "../services/api";
 import type { VideoItem } from "../types";
@@ -13,10 +13,7 @@ interface ToolbarProps {
   fenceEditing: boolean;
   hasFence: boolean;
   connected: boolean;
-  calibrating: boolean;
-  hasCalibration: boolean;
   orbActive: boolean;
-  calibCount: number;
   activeSourceId: string;
   onConnect: (sourceId: string) => void;
   onDisconnect: () => void;
@@ -24,8 +21,6 @@ interface ToolbarProps {
   onFenceClear: () => void;
   onFenceSave: () => void;
   onConfigOpen: () => void;
-  onCalibrateToggle: () => void;
-  onCalibrateCancel: () => void;
   onAddWebcam: () => void;
   onAddFile: (filename: string) => void;
   onRemoveSource: () => void;
@@ -34,10 +29,10 @@ interface ToolbarProps {
 }
 
 const Toolbar: React.FC<ToolbarProps> = ({
-  streaming, fenceEditing, hasFence, connected, calibrating, hasCalibration,
-  orbActive, calibCount, activeSourceId, onConnect, onDisconnect,
+  streaming, fenceEditing, hasFence, connected,
+  orbActive, activeSourceId, onConnect, onDisconnect,
   onFenceEditToggle, onFenceClear, onFenceSave, onConfigOpen,
-  onCalibrateToggle, onCalibrateCancel, onAddWebcam, onAddFile,
+  onAddWebcam, onAddFile,
   onRemoveSource, onPreview, onOpenDashboard,
 }) => {
   const [videoFiles, setVideoFiles] = useState<VideoItem[]>([]);
@@ -83,9 +78,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
         {connected ? (streaming ? "LIVE" : "connected") : "offline"}
       </Tag>
       {activeSourceId && <Tag color="blue">{activeSourceId.slice(0,8)}</Tag>}
-      {hasCalibration && <Tag color="blue">calibrated</Tag>}
       {orbActive && <Tag color="purple">ORB</Tag>}
-      {calibrating && <Tag color="gold">cal ({calibCount}/4)</Tag>}
 
       <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.15)", margin: "0 4px" }} />
 
@@ -118,20 +111,11 @@ const Toolbar: React.FC<ToolbarProps> = ({
           <Button icon={<CheckOutlined />} size="middle" type="primary"
             style={{ background: "#52c41a", borderColor: "#52c41a" }} onClick={onFenceSave}>save</Button>
         ) : (
-          <Button icon={<EditOutlined />} size="middle" onClick={onFenceEditToggle} disabled={calibrating}
+          <Button icon={<EditOutlined />} size="middle" onClick={onFenceEditToggle}
             style={{ borderColor: "#fa8c16", color: "#fa8c16" }}>draw</Button>
         )}
         {hasFence && <Button icon={<DeleteOutlined />} size="middle" danger onClick={onFenceClear}>clear</Button>}
       </Space>
-
-      <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.15)", margin: "0 4px" }} />
-
-      {calibrating ? (
-        <Button icon={<AimOutlined />} size="middle" type="primary" danger onClick={onCalibrateCancel}>cancel</Button>
-      ) : (
-        <Button icon={<AimOutlined />} size="middle" onClick={onCalibrateToggle} disabled={fenceEditing}
-          style={{ borderColor: "#1677ff", color: "#1677ff" }}>calibrate</Button>
-      )}
 
       <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.15)", margin: "0 4px" }} />
 

@@ -4,7 +4,7 @@ import ReactECharts from "echarts-for-react";
 import type { AlertInfo, WSMessage, VideoSource } from "./types";
 import { useWS } from "./hooks/useWS";
 import {
-  getFence, saveFence, clearFence, saveCalibration,
+  getFence, saveFence, clearFence,
   addWebcamSource, addFileSource, removeSource, listSources,
   uploadVideo, listVideos, previewWebcam, previewFile,
   getAlerts,
@@ -14,7 +14,6 @@ import FenceCanvas from "./components/FenceCanvas";
 import AlertList from "./components/AlertList";
 import AlertHistory from "./components/AlertHistory";
 import ConfigDialog from "./components/ConfigDialog";
-import CalibrationDialog from "./components/CalibrationDialog";
 import type { AlertRecord } from "./types";
 
 const COLORS = ["#00dbe7", "#ff6384", "#ffcd56", "#4bc0c0", "#9966ff", "#ff9f40", "#c9cbcf"];
@@ -74,7 +73,6 @@ const PieChart: React.FC<{ data: { name: string; value: number }[] }> = ({ data 
   );
 };
 
-
 const App: React.FC = () => {
   const navigate = useNavigate();
 
@@ -106,10 +104,6 @@ const App: React.FC = () => {
 
   // UI
   const [configOpen, setConfigOpen] = useState(false);
-  const [calibrating, setCalibrating] = useState(false);
-  const [calibPoints, setCalibPoints] = useState<[number, number][]>([]);
-  const [calibDialogOpen, setCalibDialogOpen] = useState(false);
-  const [hasCalibration, setHasCalibration] = useState(false);
   const [orbActive, setOrbActive] = useState(false);
 
   // ---- WebSocket ----
@@ -117,7 +111,7 @@ const App: React.FC = () => {
     if (msg.type !== "frame" || !msg.image) return;
     setImageSrc(`data:image/jpeg;base64,${msg.image}`);
     setVideoSize({ width: msg.width, height: msg.height });
-    if (msg.orb_tracking && msg.fence_pixels && msg.fence_pixels.length >= 3 && !fenceEditing && !calibrating) {
+    if (msg.orb_tracking && msg.fence_pixels && msg.fence_pixels.length >= 3 && !fenceEditing ) {
       setFencePoints(msg.fence_pixels);
     }
     setOrbActive(msg.orb_tracking);
@@ -126,7 +120,7 @@ const App: React.FC = () => {
       alertsRef.current = newAlerts;
       setAlerts(newAlerts);
     }
-  }, [fenceEditing, calibrating]);
+  }, [fenceEditing]);
 
   const { lastMessage, connected, connect, disconnect } = useWS(handleMessage);
 
@@ -176,7 +170,6 @@ const App: React.FC = () => {
   useEffect(() => {
     getFence(activeSourceId || "default").then((d) => {
       setFencePoints(d.points || []);
-      setHasCalibration(d.has_calibration || false);
     }).catch(() => {});
   }, [activeSourceId]);
 
@@ -264,14 +257,6 @@ const App: React.FC = () => {
   const handleFenceClear = () => clearFence(activeSourceId || "default")
     .then(() => { setFencePoints([]); setFenceEditing(false); }).catch(() => {});
 
-  const handleCalibrationOk = async (worldPoints: [number, number][]) => {
-    try {
-      const res: any = await saveCalibration(calibPoints, worldPoints, activeSourceId || "default");
-      setCalibrating(false); setCalibPoints([]); setCalibDialogOpen(false);
-      setHasCalibration(true);
-      if (res.fence_pixels?.length >= 3) setFencePoints(res.fence_pixels);
-    } catch { /* */ }
-  };
 
   const onlineCount = sources.filter((s) => s.ready).length;
 
@@ -467,11 +452,6 @@ const App: React.FC = () => {
                 title="清除围栏">
                 <span className="material-symbols-outlined text-[20px]">delete</span>
               </button>
-              <button onClick={() => setCalibrating(true)}
-                className="w-10 h-10 flex items-center justify-center bg-surface-container/60 border border-outline-variant/30 rounded-lg hover:bg-primary/20 transition-colors"
-                title="校准">
-                <span className="material-symbols-outlined text-[20px]">my_location</span>
-              </button>
             </div>
 
             {/* Video content */}
@@ -494,13 +474,6 @@ const App: React.FC = () => {
                   points={fencePoints}
                   onPointsChange={setFencePoints}
                   editing={fenceEditing}
-                  calibrating={calibrating}
-                  calibPoints={calibPoints}
-                  onCalibPointsChange={(pts) => {
-                    setCalibPoints(pts);
-                    if (pts.length === 4) setTimeout(() => setCalibDialogOpen(true), 300);
-                  }}
-                  onCalibComplete={() => setCalibDialogOpen(true)}
                 />
               </div>
               {loading && !imageSrc && (
@@ -606,10 +579,7 @@ const App: React.FC = () => {
           <div className="glass-panel p-3 rounded-lg flex flex-wrap gap-2">
             {connected && <span className="px-2 py-0.5 text-[10px] bg-primary-container/10 border border-primary-container/30 rounded-full text-primary-container">LIVE</span>}
             {orbActive && <span className="px-2 py-0.5 text-[10px] bg-secondary/10 border border-secondary/30 rounded-full text-secondary">ORB</span>}
-            {hasCalibration && <span className="px-2 py-0.5 text-[10px] bg-tertiary-fixed-dim/10 border border-tertiary-fixed-dim/30 rounded-full text-tertiary-fixed-dim">已校准</span>}
-            {fencePoints.length >= 3 && <span className="px-2 py-0.5 text-[10px] bg-primary-fixed-dim/10 border border-primary-fixed-dim/30 rounded-full text-primary-fixed-dim">围栏</span>}
-            {calibrating && <span className="px-2 py-0.5 text-[10px] bg-error/10 border border-error/30 rounded-full text-error">校准中</span>}
-            {!calibrating && <button onClick={() => { setCalibrating(true); setCalibPoints([]); }} className="px-2 py-0.5 text-[10px] bg-surface-container border border-outline-variant/30 rounded-full text-on-surface-variant hover:text-primary transition-colors">+ 校准</button>}
+
           </div>
 
           {/* Recent alerts */}
@@ -693,8 +663,6 @@ const App: React.FC = () => {
 
       {/* Dialogs */}
       <ConfigDialog open={configOpen} onClose={() => setConfigOpen(false)} />
-      <CalibrationDialog open={calibDialogOpen} pixelPoints={calibPoints}
-        onOk={handleCalibrationOk} onCancel={() => setCalibDialogOpen(false)} />
     </div>
   );
 };
