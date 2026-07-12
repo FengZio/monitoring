@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 
 from config import ORB_TRACK_INTERVAL
+from behavior_rules import classify_behavior_candidate
+from pose_rules import classify_pose_candidate
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +24,8 @@ class TrackedObject:
     alert_count: int = 0
     first_alert_time: float = 0.0
     last_seen: float = field(default_factory=time.time)
+    trajectory: list[tuple[float, list[int], bool]] = field(default_factory=list)
+    pose_history: list[dict] = field(default_factory=list)
 
 
 class FenceChecker:
@@ -151,7 +155,7 @@ class FenceChecker:
             j = i
         return inside
 
-    def update(self, detections: list[dict]) -> list[dict]:
+    def update(self, detections: list[dict], poses: Optional[dict[int, dict]] = None) -> list[dict]:
         """Update tracks using ByteTrack assigned track_id (no IOU matching)."""
         now = time.time()
         alerts: list[dict] = []
@@ -174,6 +178,11 @@ class FenceChecker:
                     was_inside = tobj.inside_fence
                     tobj.bbox = det["bbox"]
                     tobj.last_seen = now
+                    tobj.trajectory.append((now, det["bbox"], currently_inside))
+                    tobj.trajectory = [item for item in tobj.trajectory if now - item[0] <= 10.0]
+                    if poses and bt_track_id in poses:
+                        tobj.pose_history.append(poses[bt_track_id])
+                        tobj.pose_history = tobj.pose_history[-20:]
 
                     trigger = False
                     if self._fence_mode == "restricted":
@@ -196,6 +205,11 @@ class FenceChecker:
                             "alert_count": tobj.alert_count,
                             "is_repeat": tobj.alert_count > 1,
                             "repeat_interval": round(repeat_interval, 1),
+                            "behavior_candidate": (
+                                classify_pose_candidate(tobj.pose_history)
+                                if classify_pose_candidate(tobj.pose_history) != "normal"
+                                else classify_behavior_candidate(tobj.trajectory)
+                            ),
                         })
                     elif not currently_inside:
                         tobj.inside_fence = False
@@ -211,6 +225,7 @@ class FenceChecker:
                         inside_fence=currently_inside,
                         was_alerted=currently_inside,
                         last_seen=now,
+                        trajectory=[(now, det["bbox"], currently_inside)],
                     )
             else:
                 # No ByteTrack ID: assign a local id as fallback
@@ -224,6 +239,7 @@ class FenceChecker:
                     inside_fence=currently_inside,
                     was_alerted=currently_inside,
                     last_seen=now,
+                    trajectory=[(now, det["bbox"], currently_inside)],
                 )
 
         # Clean up stale tracks (not seen in this frame and expired)

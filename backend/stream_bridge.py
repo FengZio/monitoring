@@ -9,7 +9,7 @@ from collections import deque
 from datetime import datetime
 from pathlib import Path
 from queue import Queue, Empty
-from threading import Thread, Event
+from threading import Thread, Event, Lock
 from typing import Optional, Set
 from uuid import uuid4
 
@@ -22,7 +22,11 @@ from notifier import send_alert_notification
 from sse_manager import sse_broadcaster
 from routes.ws_stream import ws_broadcaster, encode_frame
 from detector import Detector
+from identity_resolver import IdentityResolver
+from pose_detector import PoseDetector
+from source_tracker import SourceTracker
 from fence_checker import FenceChecker
+from vllm_client import annotate_panorama_frames, analyze_frames, compose_context_frames, crop_alert_frames, select_adaptive_frames
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +44,15 @@ def _source_worker(
     result_queue: Queue,
     stop_event: Event,
     detector: Detector,
+    pose_detector: PoseDetector,
+    source_tracker: SourceTracker,
     fence_checker: FenceChecker,
+    ring_buffer: deque,
+    ring_buffer_lock: Lock,
 ) -> None:
     """Runs in a thread: open source -> detect -> check fence -> encode -> send."""
     try:
+        identity_resolver = IdentityResolver()
         if source_type == "webcam":
             cam_id = int(source_arg)
             cap = cv2.VideoCapture(cam_id, cv2.CAP_DSHOW)
@@ -58,8 +67,6 @@ def _source_worker(
             result_queue.put({"source_id": source_id, "type": "error", "error": "Cannot open source"})
             return
 
-        # Ring buffer for video clips
-        ring_buffer: deque = deque(maxlen=375)
         frame_idx = 0
 
         # Alert clip writer state
@@ -87,18 +94,25 @@ def _source_worker(
             # Use native resolution (no resize)
             frame_proc = frame
 
-            # Add to ring buffer
-            ring_buffer.append((time.time(), frame_proc.copy()))
-
             # Detection (uses shared Detector singleton)
-            detections = detector.detect(frame_proc)
+            detections = source_tracker.update(frame_proc, detector.detect(frame_proc))
+            raw_ids = set()
+            for detection in detections:
+                raw_id = detection.get("track_id")
+                if raw_id is None:
+                    continue
+                raw_ids.add(raw_id)
+                detection["raw_track_id"] = raw_id
+                detection["track_id"] = identity_resolver.resolve(raw_id, detection["bbox"])
+            identity_resolver.retire_missing(raw_ids)
 
             # ORB fence tracking
             orb_fence = fence_checker.track_fence(frame_proc)
 
             # Fence check
 
-            alerts = fence_checker.update(detections)
+            poses = pose_detector.estimate(frame_proc, detections) if frame_idx % 5 == 0 else {}
+            alerts = fence_checker.update(detections, poses)
 
             # Filter alerts by configured alert classes (live config read)
             try:
@@ -113,13 +127,18 @@ def _source_worker(
 
             track_states = fence_checker.get_track_states()
             fence_pixels = orb_fence if orb_fence else fence_checker.get_fence_pixels()
+            track_boxes = {track["track_id"]: track["bbox"] for track in track_states}
+
+            # Keep image and tracking metadata together for adaptive sampling.
+            with ring_buffer_lock:
+                ring_buffer.append((time.time(), frame_proc.copy(), track_boxes))
 
             # Handle alert clip writing
             if alerts and clip_writer is None:
                 pre_sec = 5.0
                 now = time.time()
                 pre_frames = []
-                for ts, frm in ring_buffer:
+                for ts, frm, _ in ring_buffer:
                     if ts >= now - pre_sec:
                         pre_frames.append(frm)
 
@@ -154,6 +173,9 @@ def _source_worker(
                 snap_path = str(SNAPSHOTS_DIR / snap_name)
                 cv2.imwrite(snap_path, frame_proc, [cv2.IMWRITE_JPEG_QUALITY, 85])
                 alert["snapshot_path"] = snap_path
+                alert["trigger_time"] = time.time()
+                alert["alert_key"] = uuid4().hex
+                alert["fence_points"] = fence_pixels
 
             # Encode JPEG
             jpg_b64 = encode_frame(frame_proc)
@@ -201,6 +223,7 @@ class StreamManager:
 
         # Pre-load detector on startup (once, shared by all threads)
         self.detector = Detector()
+        self.pose_detector = PoseDetector()
         if self.detector.is_ready:
             logger.info("YOLO model pre-loaded and ready (shared)")
         else:
@@ -211,14 +234,18 @@ class StreamManager:
         source_id = uuid4().hex[:12]
         queue: Queue = Queue(maxsize=500)
         stop_event = Event()
+        ring_buffer: deque = deque(maxlen=375)
+        ring_buffer_lock = Lock()
 
         if fence_checker is None:
             fence_checker = FenceChecker()
 
+        source_tracker = SourceTracker(source_id, 25.0)
+
         thread = Thread(
             target=_source_worker,
             args=(source_id, source_type, source_arg, queue, stop_event,
-                  self.detector, fence_checker),
+                  self.detector, self.pose_detector, source_tracker, fence_checker, ring_buffer, ring_buffer_lock),
             daemon=True,
         )
         thread.start()
@@ -230,6 +257,9 @@ class StreamManager:
             "queue": queue,
             "stop_event": stop_event,
             "fence_checker": fence_checker,
+            "source_tracker": source_tracker,
+            "ring_buffer": ring_buffer,
+            "ring_buffer_lock": ring_buffer_lock,
             "ready": False,
             "fps": 25.0,
         }
@@ -325,7 +355,13 @@ class StreamManager:
                             await ws_broadcaster.broadcast_to_source(sid, msg)
 
                             for alert in msg["alerts"]:
-                                await self._handle_alert(sid, alert)
+                                trigger_time = alert.pop("trigger_time", time.time())
+                                asyncio.create_task(
+                                    self._finalize_alert(
+                                        sid, alert, src["ring_buffer"],
+                                        src["ring_buffer_lock"], trigger_time
+                                    )
+                                )
 
                         elif msg_type == "clip_ready":
                             await self._attach_clip(sid, msg["clip_path"])
@@ -352,12 +388,48 @@ class StreamManager:
 
         logger.info("Consume loop exited")
 
+    async def _finalize_alert(
+        self, source_id: str, alert: dict, ring_buffer: deque,
+        ring_buffer_lock: Lock, trigger_time: float
+    ) -> None:
+        """Wait for the post-alert frame, then analyze and persist the alert."""
+        await asyncio.sleep(max(0.0, trigger_time + 10.0 - time.time()))
+        with ring_buffer_lock:
+            frames, boxes = select_adaptive_frames(
+                list(ring_buffer), trigger_time, alert.get("track_id"), alert["bbox"]
+            )
+        alert["vllm_analysis"] = ""
+        alert["vllm_risk_level"] = ""
+        alert["vllm_is_destructive"] = None
+        if len(frames) == 3:
+            db = SessionLocal()
+            try:
+                config = db.query(Config).filter(Config.id == 1).first()
+                if config:
+                    crops = [crop_alert_frames([frame], box, padding=max(16, int((box[2] - box[0]) * 0.4)))[0]
+                             for frame, box in zip(frames, boxes)]
+                    panoramas = annotate_panorama_frames(
+                        frames, boxes, alert.get("fence_points", []), alert.get("track_id", 0)
+                    )
+                    evidence_frames = compose_context_frames(panoramas, crops) if len(crops) == 3 else panoramas
+                    loop = asyncio.get_running_loop()
+                    result = await loop.run_in_executor(
+                        None, analyze_frames, config, evidence_frames, alert.get("behavior_candidate", "normal")
+                    )
+                    alert["vllm_analysis"] = result["analysis"]
+                    alert["vllm_risk_level"] = result["risk_level"]
+                    alert["vllm_is_destructive"] = result["is_destructive"]
+            except Exception as exc:
+                logger.warning("vLLM alert analysis failed: %s", exc)
+            finally:
+                db.close()
+        await self._handle_alert(source_id, alert)
+
     async def _handle_alert(self, source_id: str, alert: dict) -> None:
         bbox_json = json.dumps(alert["bbox"])
         timestamp = datetime.utcnow()
 
-        snapshot_name = f"alert_{timestamp.strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-        snapshot_path = SNAPSHOTS_DIR / snapshot_name
+        snapshot_path = alert.get("snapshot_path", "")
 
         db = SessionLocal()
         try:
@@ -368,9 +440,23 @@ class StreamManager:
                 timestamp=timestamp,
                 video_source=source_id,
                 snapshot_path=str(snapshot_path),
+                vllm_analysis=alert.get("vllm_analysis") or None,
+                vllm_risk_level=alert.get("vllm_risk_level") or None,
+                vllm_is_destructive=alert.get("vllm_is_destructive"),
             )
             db.add(record)
             db.commit()
+            alert_ready = {
+                "type": "alert_ready", "id": record.id, "alert_key": alert.get("alert_key", ""),
+                "class_name": record.class_name, "confidence": record.confidence,
+                "bbox": alert["bbox"], "track_id": alert.get("track_id"),
+                "timestamp": record.timestamp.isoformat(), "video_source": source_id,
+                "snapshot_path": record.snapshot_path, "clip_path": record.clip_path,
+                "status": record.status or "pending", "vllm_analysis": record.vllm_analysis,
+                "vllm_risk_level": record.vllm_risk_level,
+                "vllm_is_destructive": record.vllm_is_destructive,
+            }
+            await ws_broadcaster.broadcast_to_source(source_id, alert_ready)
         except Exception as e:
             logger.error(f"Failed to save alert: {e}")
         finally:

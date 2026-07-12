@@ -2,7 +2,10 @@ import React, { useState, useEffect, useCallback } from "react";
 import type { AlertRecord } from "../types";
 import { getAlerts, updateAlertStatus, getAlertClipUrl } from "../services/api";
 
-interface Props { compact?: boolean; }
+interface Props {
+  compact?: boolean;
+  onPlayClip?: (url: string) => void;
+}
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   pending: { label: "未处理", color: "border-red-400 text-red-300" },
@@ -11,7 +14,16 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   resolved: { label: "已处理", color: "border-green-400 text-green-300" },
 };
 
-const AlertHistory: React.FC<Props> = ({ compact }) => {
+const formatAlertTime = (timestamp: string | null) => {
+  if (!timestamp) return "-";
+  const utcTimestamp = /(?:Z|[+-]\d\d:\d\d)$/.test(timestamp) ? timestamp : `${timestamp}Z`;
+  return new Date(utcTimestamp).toLocaleString("zh-CN", {
+    timeZone: "Asia/Hong_Kong", hour12: false,
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+};
+
+const AlertHistory: React.FC<Props> = ({ compact, onPlayClip }) => {
   const [data, setData] = useState<AlertRecord[]>([]);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
@@ -83,13 +95,18 @@ const AlertHistory: React.FC<Props> = ({ compact }) => {
                 <tr key={r.id} className="border-b border-outline-variant/10 hover:bg-surface-variant/20">
                   <td className="py-1.5 pr-2 text-on-surface-variant">#{r.id}</td>
                   <td className="py-1.5 pr-2 text-on-surface">{r.class_name}</td>
-                  <td className="py-1.5 pr-2 text-on-surface-variant whitespace-nowrap">{r.timestamp?.replace("T", " ").slice(5, 16)}</td>
+                  <td className="py-1.5 pr-2 text-on-surface-variant whitespace-nowrap">{formatAlertTime(r.timestamp)}</td>
                   <td className="py-1.5 pr-2"><span className={`px-1.5 py-0.5 border rounded text-[9px] ${st.color}`}>{st.label}</span></td>
                   <td className="py-1.5 pr-2 text-on-surface-variant">{r.handler || "-"}</td>
                   <td className="py-1.5 flex gap-1">
                     <button onClick={() => handleOpen(r)} className="px-1.5 py-0.5 bg-surface-container border border-outline-variant/30 rounded text-[9px] hover:text-primary transition-colors">处理</button>
                     {r.clip_path && (
-                      <button onClick={() => setClipUrl(getAlertClipUrl(r.id))} className="px-1.5 py-0.5 bg-surface-container border border-outline-variant/30 rounded text-[9px] hover:text-primary transition-colors">?</button>
+                      <button onClick={() => {
+                        const url = getAlertClipUrl(r.id);
+                        if (onPlayClip) onPlayClip(url); else setClipUrl(url);
+                      }} className="material-symbols-outlined px-1.5 py-0.5 bg-surface-container border border-outline-variant/30 rounded text-[14px] hover:text-primary transition-colors" title="播放录像">
+                        play_circle
+                      </button>
                     )}
                   </td>
                 </tr>
@@ -138,6 +155,12 @@ const AlertHistory: React.FC<Props> = ({ compact }) => {
               className="w-full bg-surface-container border border-outline-variant rounded p-2 text-xs text-on-surface" placeholder="处理人" />
             <textarea value={opinion} onChange={(e) => setOpinion(e.target.value)} rows={3}
               className="w-full bg-surface-container border border-outline-variant rounded p-2 text-xs text-on-surface resize-none" placeholder="处理意见" />
+            {selected.vllm_analysis && (
+              <div className="text-xs text-on-surface-variant rounded border border-outline-variant/30 p-2">
+                <p className="mb-1">视觉分析（{selected.vllm_risk_level === "high" ? "高风险" : selected.vllm_risk_level === "review" ? "需复核" : "低风险"}）</p>
+                <p>{selected.vllm_analysis}</p>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <button onClick={() => setModalOpen(false)} className="px-4 py-1.5 text-xs border border-outline-variant rounded text-on-surface-variant">取消</button>
               <button onClick={handleSubmit} className="px-4 py-1.5 text-xs bg-primary-container/20 border border-primary-container rounded text-primary-container">确认</button>

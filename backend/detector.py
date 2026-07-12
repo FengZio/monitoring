@@ -67,19 +67,18 @@ class Detector:
         return self.model is not None
 
     def detect(self, frame: np.ndarray) -> list[dict]:
-        """Safe detection with ByteTrack: returns empty list if model not loaded."""
+        """Run shared YOLO detection only; tracking is isolated per video source."""
         if self.model is None:
             return []
 
         try:
-            results = self.model.track(
+            with self._lock:
+                results = self.model(
                 frame,
-                persist=True,
-                tracker="bytetrack.yaml",
                 conf=CONFIDENCE_THRESHOLD,
                 iou=IOU_THRESHOLD,
                 verbose=False,
-            )
+                )
         except Exception:
             return []
 
@@ -90,12 +89,11 @@ class Detector:
                 cls_id = int(boxes_data.cls[i])
                 if cls_id in DETECTION_CLASSES:
                     x1, y1, x2, y2 = boxes_data.xyxy[i].tolist()
-                    track_id = int(boxes_data.id[i]) if boxes_data.id is not None else None
                     detections.append({
                         "class_id": cls_id,
                         "class_name": self.model.names[cls_id],
                         "confidence": float(boxes_data.conf[i]),
                         "bbox": [int(x1), int(y1), int(x2), int(y2)],
-                        "track_id": track_id,
+                        "track_id": None,
                     })
         return detections

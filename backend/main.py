@@ -2,6 +2,8 @@
 import logging
 from contextlib import asynccontextmanager
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -14,7 +16,6 @@ from routes.ws_stream import router as ws_router
 from routes.stats import router as stats_router
 from routes.sse import router as sse_router
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 init_db()

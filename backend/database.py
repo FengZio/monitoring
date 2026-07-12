@@ -26,6 +26,9 @@ class Alert(Base):
     handler = Column(String(64), nullable=True)
     opinion = Column(Text, nullable=True)
     handled_at = Column(DateTime, nullable=True)
+    vllm_analysis = Column(Text, nullable=True)
+    vllm_risk_level = Column(String(16), nullable=True)
+    vllm_is_destructive = Column(Boolean, nullable=True)
 
 
 class Fence(Base):
@@ -52,6 +55,11 @@ class Config(Base):
     dingtalk_webhook = Column(String(512))
     alert_classes = Column(Text, default='["person","bicycle","car","motorcycle","bus","truck"]')
     picgo_key = Column(String(256), default="")
+    vllm_enabled = Column(Boolean, default=False)
+    vllm_base_url = Column(String(512), default="")
+    vllm_model = Column(String(128), default="GLM-4V-Flash")
+    vllm_api_key = Column(String(512), default="")
+    vllm_timeout_seconds = Column(Integer, default=30)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 
@@ -71,6 +79,19 @@ def init_db():
             conn.execute(text("ALTER TABLE config ADD COLUMN picgo_key VARCHAR(256) DEFAULT ''"))
         except Exception:
             pass
+        for column, definition in [
+            ("vllm_analysis", "TEXT"), ("vllm_risk_level", "VARCHAR(16)"),
+            ("vllm_is_destructive", "BOOLEAN"), ("vllm_enabled", "BOOLEAN DEFAULT 0"),
+            ("vllm_base_url", "VARCHAR(512) DEFAULT ''"), ("vllm_model", "VARCHAR(128) DEFAULT 'GLM-4V-Flash'"),
+            ("vllm_api_key", "VARCHAR(512) DEFAULT ''"), ("vllm_timeout_seconds", "INTEGER DEFAULT 30"),
+        ]:
+            try:
+                table = "alerts" if column.startswith("vllm_") and column not in {
+                    "vllm_enabled", "vllm_base_url", "vllm_model", "vllm_api_key", "vllm_timeout_seconds"
+                } else "config"
+                conn.execute(text("ALTER TABLE {} ADD COLUMN {} {}".format(table, column, definition)))
+            except Exception:
+                pass
         conn.commit()
     with SessionLocal() as session:
         if not session.query(Fence).filter(Fence.source_id == "default").first():

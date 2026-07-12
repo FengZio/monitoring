@@ -26,6 +26,8 @@ except Exception:
 # ---- model config ----
 MODEL_NAME = "yolov8n"
 MODEL_PATH = str(MODELS_DIR / f"{MODEL_NAME}.pt")
+POSE_MODEL_PATH = str(MODELS_DIR / "yolo11n-pose.pt")
+POSE_INTERVAL = 5
 
 DETECTION_CLASSES = {0, 1, 2, 3, 5, 7}    # person, bicycle, car, motorcycle, bus, truck
 CONFIDENCE_THRESHOLD = 0.4

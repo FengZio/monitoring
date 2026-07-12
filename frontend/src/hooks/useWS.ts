@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
-import type { WSMessage } from "../types";
+import type { StreamMessage, WSMessage } from "../types";
 
 interface UseWSReturn {
   lastMessage: WSMessage | null;
@@ -8,7 +8,7 @@ interface UseWSReturn {
   disconnect: () => void;
 }
 
-export function useWS(onMessage?: (msg: WSMessage) => void): UseWSReturn {
+export function useWS(onMessage?: (msg: StreamMessage) => void): UseWSReturn {
   const wsRef = useRef<WebSocket | null>(null);
   const [lastMessage, setLastMessage] = useState<WSMessage | null>(null);
   const [connected, setConnected] = useState(false);
@@ -48,8 +48,8 @@ export function useWS(onMessage?: (msg: WSMessage) => void): UseWSReturn {
         const msg: WSMessage = JSON.parse(ev.data);
         if (msg.type === "frame" && msg.image) {
           if (mounted.current) setLastMessage(msg);
-          onMessageRef.current?.(msg);
         }
+        onMessageRef.current?.(msg as StreamMessage);
       } catch { /* ignore */ }
     };
     ws.onclose = () => {

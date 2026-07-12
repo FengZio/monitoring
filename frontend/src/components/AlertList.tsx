@@ -1,15 +1,11 @@
 import React, { useState } from "react";
-import type { AlertInfo, AlertRecord } from "../types";
+import type { AlertInfo } from "../types";
 import { updateAlertStatus, getAlertClipUrl } from "../services/api";
 
 interface Props { alerts: AlertInfo[]; compact?: boolean; }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "border-red-400 text-red-300",
-  processing: "border-orange-400 text-orange-300",
-  dismissed: "border-gray-500 text-gray-400",
-  resolved: "border-green-400 text-green-300",
-};
+const RISK_LABELS = { high: "高风险", review: "需复核", low: "低风险" };
+const RISK_COLORS = { high: "text-error", review: "text-secondary", low: "text-primary-container" };
 
 const AlertList: React.FC<Props> = ({ alerts, compact }) => {
   const [modalOpen, setModalOpen] = useState(false);
@@ -39,22 +35,29 @@ const AlertList: React.FC<Props> = ({ alerts, compact }) => {
   if (compact) {
     return (
       <div className="space-y-1">
-        {alerts.slice(-50).reverse().map((a: any, i) => (
+        {alerts.slice(-50).reverse().map((a, i) => {
+          const alertId = a.id;
+          return (
           <div key={i} className="p-2 bg-error-container/10 border-l-2 border-error rounded-r flex gap-2 cursor-pointer hover:bg-error-container/20 transition-colors" onClick={() => handleOpen(a)}>
             <span className="material-symbols-outlined text-error text-[16px]">dangerous</span>
             <div className="min-w-0 flex-1">
               <p className="text-[11px] text-on-error-container font-bold">{a.class_name} #{a.track_id}</p>
               <p className="text-[9px] text-on-surface-variant mt-0.5">{(a.confidence * 100).toFixed(0)}%</p>
+              {a.vllm_risk_level ? (
+                <p className={`text-[9px] mt-1 ${RISK_COLORS[a.vllm_risk_level]}`}>{RISK_LABELS[a.vllm_risk_level]}</p>
+              ) : <p className="text-[9px] text-on-surface-variant mt-1">视觉分析中...</p>}
+              {a.vllm_analysis && <p className="text-[9px] text-on-surface-variant mt-1 line-clamp-2">{a.vllm_analysis}</p>}
             </div>
-            {a.id && (
+            {alertId !== undefined && (
               <span className="material-symbols-outlined text-on-surface-variant text-[14px] cursor-pointer"
-                onClick={(e) => { e.stopPropagation(); setClipUrl(getAlertClipUrl(a.id)); }}
+                onClick={(e) => { e.stopPropagation(); setClipUrl(getAlertClipUrl(alertId)); }}
                 title="查看录像">
                 play_circle
               </span>
             )}
           </div>
-        ))}
+          );
+        })}
         {alerts.length === 0 && <div className="text-center text-on-surface-variant text-[10px] py-4">暂无实时告警</div>}
 
         {/* Clip video popover */}
@@ -105,7 +108,7 @@ const AlertList: React.FC<Props> = ({ alerts, compact }) => {
   // Non-compact: used in right panel
   return (
     <div className="space-y-2">
-      {alerts.slice(-50).reverse().map((a: any, i) => (
+      {alerts.slice(-50).reverse().map((a, i) => (
         <div key={i} className="p-2 bg-error-container/10 border-l-2 border-error rounded-r flex gap-2">
           <span className="material-symbols-outlined text-error text-[16px]">dangerous</span>
           <div className="min-w-0 flex-1">

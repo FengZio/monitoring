@@ -50,6 +50,8 @@ def _send_email(alert_info: dict) -> None:
             f"<p>置信度: {alert_info.get('confidence', 0):.1%}</p>"
             f"<p>时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>"
         )
+        if alert_info.get("vllm_analysis"):
+            body += f"<p>视觉分析: [{alert_info.get('vllm_risk_level') or '未知'}] {alert_info['vllm_analysis']}</p>"
 
         msg = MIMEMultipart()
         msg["Subject"] = subject
@@ -141,6 +143,10 @@ async def _send_dingtalk(alert_info: dict) -> None:
             "- 模式: {}\n"
             "- 时间: {}\n"
         ).format(class_name, track_id, confidence, pattern, now_str)
+        if alert_info.get("vllm_analysis"):
+            text += "- 视觉分析（{}）: {}\n".format(
+                alert_info.get("vllm_risk_level") or "未知", alert_info["vllm_analysis"]
+            )
 
         async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
             # Upload snapshot image to picgo.net if available

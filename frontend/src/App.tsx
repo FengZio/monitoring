@@ -1,7 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
-import type { AlertInfo, WSMessage, VideoSource } from "./types";
+import type { AlertInfo, StreamMessage, VideoSource } from "./types";
 import { useWS } from "./hooks/useWS";
 import {
   getFence, saveFence, clearFence, setFenceMode,
@@ -18,6 +18,15 @@ import FenceModeDialog from "./components/FenceModeDialog";
 import type { AlertRecord } from "./types";
 
 const COLORS = ["#00dbe7", "#ff6384", "#ffcd56", "#4bc0c0", "#9966ff", "#ff9f40", "#c9cbcf"];
+
+const formatAlertTime = (timestamp: string | null) => {
+  if (!timestamp) return "-";
+  const utcTimestamp = /(?:Z|[+-]\d\d:\d\d)$/.test(timestamp) ? timestamp : `${timestamp}Z`;
+  return new Date(utcTimestamp).toLocaleString("zh-CN", {
+    timeZone: "Asia/Hong_Kong", hour12: false,
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+};
 
 const PieChart: React.FC<{ data: { name: string; value: number }[] }> = ({ data }) => {
   const total = data.reduce((s, d) => s + d.value, 0) || 1;
@@ -108,9 +117,33 @@ const App: React.FC = () => {
   // UI
   const [configOpen, setConfigOpen] = useState(false);
   const [orbActive, setOrbActive] = useState(false);
+  const [expandedAlertId, setExpandedAlertId] = useState<number | null>(null);
+  const [centralClipUrl, setCentralClipUrl] = useState("");
 
   // ---- WebSocket ----
-  const handleMessage = useCallback((msg: WSMessage) => {
+  const handleMessage = useCallback((msg: StreamMessage) => {
+    if (msg.type === "alert_ready") {
+      const completed: AlertInfo = {
+        class_name: msg.class_name, confidence: msg.confidence, bbox: msg.bbox,
+        track_id: msg.track_id ?? 0, id: msg.id, alert_key: msg.alert_key,
+        vllm_analysis: msg.vllm_analysis, vllm_risk_level: msg.vllm_risk_level,
+        vllm_is_destructive: msg.vllm_is_destructive,
+      };
+      setAlerts((current) => {
+        const updated = current.map((alert) => alert.alert_key === msg.alert_key ? completed : alert);
+        alertsRef.current = updated;
+        return updated;
+      });
+      setRecentHistory((current) => [{
+        id: msg.id, class_name: msg.class_name, confidence: msg.confidence,
+        bbox: JSON.stringify(msg.bbox), timestamp: msg.timestamp, video_source: msg.video_source,
+        snapshot_path: msg.snapshot_path, clip_path: msg.clip_path, handled: false,
+        status: msg.status, handler: null, opinion: null, handled_at: null,
+        vllm_analysis: msg.vllm_analysis, vllm_risk_level: msg.vllm_risk_level,
+        vllm_is_destructive: msg.vllm_is_destructive,
+      }, ...current.filter((alert) => alert.id !== msg.id)].slice(0, 10));
+      return;
+    }
     if (msg.type !== "frame" || !msg.image) return;
     setImageSrc(`data:image/jpeg;base64,${msg.image}`);
     setVideoSize({ width: msg.width, height: msg.height });
@@ -414,7 +447,7 @@ const App: React.FC = () => {
 
           {sourceTab === "history" && (
             <div className="flex-1 custom-scrollbar p-2">
-              <AlertHistory compact />
+              <AlertHistory compact onPlayClip={setCentralClipUrl} />
             </div>
           )}
         </aside>
@@ -463,7 +496,7 @@ const App: React.FC = () => {
             </div>
 
             {/* Video content */}
-            <div className="w-full h-full flex items-center justify-center">
+            <div className="relative w-full h-full flex items-center justify-center">
               <div style={{ position: "relative", display: "inline-block", maxWidth: "100%", maxHeight: "100%" }}>
                 <VideoPanel
                   ref={videoPanelRef}
@@ -484,6 +517,17 @@ const App: React.FC = () => {
                   editing={fenceEditing}
                 />
               </div>
+              {centralClipUrl && (
+                <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 p-6">
+                  <div className="relative w-full max-w-5xl max-h-full">
+                    <video src={centralClipUrl} controls autoPlay className="w-full max-h-[75vh] object-contain rounded" />
+                    <button onClick={() => setCentralClipUrl("")}
+                      className="absolute -top-3 -right-3 material-symbols-outlined w-8 h-8 rounded-full bg-surface-container text-on-surface hover:text-primary" title="关闭录像">
+                      close
+                    </button>
+                  </div>
+                </div>
+              )}
               {loading && !imageSrc && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-background/60 backdrop-blur-sm">
                   <div className="w-16 h-16 border-4 border-primary-container/30 border-t-primary-container rounded-full animate-spin mb-4" />
@@ -580,17 +624,38 @@ const App: React.FC = () => {
               <span className="text-[10px] text-primary-fixed-dim hover:underline cursor-pointer" onClick={() => setSourceTab("history")}>完整列表</span>
             </div>
             <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar">
-              {recentHistory.map((r) => (
-                <div key={r.id} className="p-2 bg-error-container/10 border-l-2 border-error rounded-r flex gap-2">
+              {recentHistory.map((r) => {
+                const expanded = expandedAlertId === r.id;
+                return (
+                <button key={r.id} onClick={() => setExpandedAlertId(expanded ? null : r.id)}
+                  className="w-full text-left p-2 bg-error-container/10 border-l-2 border-error rounded-r flex gap-2 hover:bg-error-container/20 transition-colors">
                   <span className="material-symbols-outlined text-error text-[16px]">dangerous</span>
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <p className="text-xs text-on-error-container font-bold truncate">{r.class_name} - #{r.id}</p>
                     <p className="text-[9px] text-on-surface-variant mt-0.5">
-                      {r.timestamp?.replace("T", " ").slice(0, 16)} · {r.status}
+                      {formatAlertTime(r.timestamp)} · {r.status}
                     </p>
+                    {r.vllm_risk_level && (
+                      <p className={`text-[9px] mt-1 ${r.vllm_risk_level === "high" ? "text-error" : r.vllm_risk_level === "review" ? "text-secondary" : "text-primary-container"}`}>
+                        {r.vllm_risk_level === "high" ? "高风险" : r.vllm_risk_level === "review" ? "需复核" : "低风险"}
+                      </p>
+                    )}
+                    {r.vllm_analysis && <p className="text-[9px] text-on-surface-variant mt-1 line-clamp-2">{r.vllm_analysis}</p>}
+                    {expanded && (
+                      <div className="mt-2 pt-2 border-t border-outline-variant/20 space-y-1 text-[9px] text-on-surface-variant whitespace-normal">
+                        <p>目标：{r.class_name} · 置信度：{(r.confidence * 100).toFixed(1)}%</p>
+                        <p>时间：{formatAlertTime(r.timestamp)}</p>
+                        <p>状态：{r.status}</p>
+                        <p>视觉风险：{r.vllm_risk_level === "high" ? "高风险" : r.vllm_risk_level === "review" ? "需复核" : r.vllm_risk_level === "low" ? "低风险" : "分析中或不可用"}</p>
+                        <p>视觉分析：{r.vllm_analysis || "尚无分析结论"}</p>
+                        <p>人工意见：{r.opinion || "暂无"}</p>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                  <span className="material-symbols-outlined text-on-surface-variant text-[16px]">{expanded ? "expand_less" : "expand_more"}</span>
+                </button>
+                );
+              })}
               {recentHistory.length === 0 && (
                 <div className="text-center text-on-surface-variant text-[10px] py-4">暂无告警记录</div>
               )}

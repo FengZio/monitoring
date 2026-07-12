@@ -35,6 +35,9 @@ def _alert_to_dict(r: Alert) -> dict:
         "handler": r.handler,
         "opinion": r.opinion,
         "handled_at": r.handled_at.isoformat() if r.handled_at else None,
+        "vllm_analysis": r.vllm_analysis,
+        "vllm_risk_level": r.vllm_risk_level,
+        "vllm_is_destructive": r.vllm_is_destructive,
     }
 
 

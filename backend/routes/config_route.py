@@ -21,6 +21,11 @@ class ConfigPayload(BaseModel):
     dingtalk_webhook: str = ""
     alert_classes: list[str] = []
     picgo_key: str = ""
+    vllm_enabled: bool = False
+    vllm_base_url: str = ""
+    vllm_model: str = "GLM-4V-Flash"
+    vllm_api_key: str = ""
+    vllm_timeout_seconds: int = 30
 
 
 @router.get("")
@@ -47,6 +52,11 @@ def get_config():
             "dingtalk_webhook": cfg.dingtalk_webhook or "",
             "alert_classes": classes,
             "picgo_key": cfg.picgo_key or "",
+            "vllm_enabled": cfg.vllm_enabled,
+            "vllm_base_url": cfg.vllm_base_url or "",
+            "vllm_model": cfg.vllm_model or "GLM-4V-Flash",
+            "vllm_api_key": cfg.vllm_api_key or "",
+            "vllm_timeout_seconds": cfg.vllm_timeout_seconds or 30,
         }
     finally:
         db.close()
@@ -69,6 +79,11 @@ def save_config(payload: ConfigPayload):
         cfg.dingtalk_enabled = payload.dingtalk_enabled
         cfg.dingtalk_webhook = payload.dingtalk_webhook
         cfg.picgo_key = payload.picgo_key
+        cfg.vllm_enabled = payload.vllm_enabled
+        cfg.vllm_base_url = payload.vllm_base_url
+        cfg.vllm_model = payload.vllm_model
+        cfg.vllm_api_key = payload.vllm_api_key
+        cfg.vllm_timeout_seconds = payload.vllm_timeout_seconds
         if payload.alert_classes:
             cfg.alert_classes = json.dumps(payload.alert_classes, ensure_ascii=False)
         db.commit()

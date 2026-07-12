@@ -15,6 +15,8 @@ const ConfigDialog: React.FC<Props> = ({ open, onClose }) => {
     email_enabled: false, email_smtp_server: "", email_smtp_port: 465,
     email_user: "", email_password: "", email_to: "",
     dingtalk_enabled: false, dingtalk_webhook: "", picgo_key: "",
+    vllm_enabled: false, vllm_base_url: "", vllm_model: "GLM-4V-Flash",
+    vllm_api_key: "", vllm_timeout_seconds: 30,
     alert_classes: ALL_CLASSES,
   });
 
@@ -78,6 +80,31 @@ const ConfigDialog: React.FC<Props> = ({ open, onClose }) => {
             <input placeholder="Picgo API Key" value={cfg.picgo_key || ""} onChange={(e) => setCfg({ ...cfg, picgo_key: e.target.value })}
               className="w-full bg-surface-container border border-outline-variant rounded p-1.5 text-xs text-on-surface ml-6 mt-2" />
             </>
+          )}
+        </div>
+
+        {/* vLLM */}
+        <div className="space-y-2">
+          <label className="flex items-center gap-2 text-xs text-on-surface">
+            <input type="checkbox" checked={cfg.vllm_enabled}
+              onChange={(e) => setCfg({ ...cfg, vllm_enabled: e.target.checked })}
+              className="accent-primary-container" /> 启用视觉大模型分析
+          </label>
+          {cfg.vllm_enabled && (
+            <div className="grid grid-cols-2 gap-2 pl-6">
+              <input placeholder="vLLM API Base URL" value={cfg.vllm_base_url}
+                onChange={(e) => setCfg({ ...cfg, vllm_base_url: e.target.value })}
+                className="col-span-2 bg-surface-container border border-outline-variant rounded p-1.5 text-xs text-on-surface" />
+              <input placeholder="模型名" value={cfg.vllm_model}
+                onChange={(e) => setCfg({ ...cfg, vllm_model: e.target.value })}
+                className="bg-surface-container border border-outline-variant rounded p-1.5 text-xs text-on-surface" />
+              <input type="number" min="1" placeholder="超时（秒）" value={cfg.vllm_timeout_seconds}
+                onChange={(e) => setCfg({ ...cfg, vllm_timeout_seconds: +e.target.value })}
+                className="bg-surface-container border border-outline-variant rounded p-1.5 text-xs text-on-surface" />
+              <input type="password" placeholder="vLLM API Key" value={cfg.vllm_api_key}
+                onChange={(e) => setCfg({ ...cfg, vllm_api_key: e.target.value })}
+                className="col-span-2 bg-surface-container border border-outline-variant rounded p-1.5 text-xs text-on-surface" />
+            </div>
           )}
         </div>
 
